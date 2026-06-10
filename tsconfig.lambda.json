@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/lambda",
+    "rootDir": "./lambda",
+    "types": ["node", "aws-lambda"],
+    "strictPropertyInitialization": false
+  },
+  "include": ["lambda/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}
