@@ -27,6 +27,6 @@ USER nodejs
 EXPOSE 3010
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
-  CMD wget --quiet --tries=1 --spider http://localhost:3010/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://localhost:3010/api/v1/health/live || exit 1
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/services/media-service/src/main.js"]
