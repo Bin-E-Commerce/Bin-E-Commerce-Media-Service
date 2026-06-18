@@ -30,6 +30,7 @@ This service touches external infrastructure, so the permission surface is expli
 | Bucket visibility           | Designed for private S3 bucket plus CloudFront, not public S3 reads.                                                |
 | Resize loop prevention      | Lambda only processes `uploads/original/*` and skips processed variants.                                            |
 | Failure isolation           | Handler supports SQS batch failures, so one bad image does not poison the whole batch.                              |
+| Old avatar cleanup          | Media Service derives prefixes from authenticated user ID plus asset ID; clients cannot submit arbitrary S3 keys.  |
 
 ---
 
@@ -72,6 +73,17 @@ CloudFront
 ```
 
 </details>
+
+### Two independent deployables
+
+The repository contains two runtimes with different responsibilities:
+
+| Runtime | Source | Responsibility | Deployment target |
+| --- | --- | --- | --- |
+| Media HTTP service | `src/app.module.ts` | Validate upload requests and create presigned S3 POST policies | Local process, container, ECS or Kubernetes |
+| Image processor | `lambda/image-processor/index.ts` | Consume S3/SQS events and create WebP variants | AWS Lambda |
+
+Deploying the NestJS media service does not update Lambda. Deploying Lambda does not restart the HTTP service.
 
 ---
 
@@ -116,10 +128,34 @@ Example response:
 }
 ```
 
-Build the Lambda processor:
+Build the Lambda processor package:
 
-```bash
-npm run build:lambda -w @bin-ecommerce/media-service
+```powershell
+npm run lambda:build
+```
+
+Deploy it to the existing AWS function:
+
+```powershell
+npm run lambda:deploy
+```
+
+Deploy an already-built zip:
+
+```powershell
+npm run lambda:deploy -- -SkipBuild
+```
+
+Smoke-test an existing original image:
+
+```powershell
+npm run lambda:verify -- -ObjectKey "uploads/original/avatar/{userId}/{assetId}/avatar.jpg"
+```
+
+Verify the full asynchronous event pipeline:
+
+```powershell
+npm run lambda:verify-pipeline -- -SourceObjectKey "uploads/original/avatar/{userId}/{assetId}/avatar.jpg"
 ```
 
 ---
@@ -164,6 +200,79 @@ Supported MIME types:
 image/jpeg
 image/png
 image/webp
+```
+
+### `POST /api/v1/media/assets/avatar/:assetId/confirm`
+
+Confirms that Lambda has created `medium.webp`, updates `users.avatar_url`
+through the internal Auth Service endpoint, and then removes the previous
+avatar asset.
+
+The client sends only `assetId`. Media Service derives the owner and CloudFront
+URL from trusted server configuration, so the client cannot submit an arbitrary
+avatar URL.
+
+```json
+{
+  "assetId": "7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2",
+  "avatarUrl": "https://cdn.example.com/media/processed/avatar/user-id/7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2/medium.webp",
+  "cleanup": {
+    "status": "deleted",
+    "oldAssetId": "6b0a7604-3a15-4c37-bc15-6a039e14e895",
+    "deletedCount": 4
+  }
+}
+```
+
+If cleanup fails after the profile update, the endpoint still returns the new
+avatar with `cleanup.status = "deferred"`. A cleanup failure must not roll back
+a valid profile update.
+
+### `DELETE /api/v1/media/assets/avatar/:assetId`
+
+Deletes the original object and all processed variants of an old avatar owned by the authenticated user.
+
+### `DELETE /api/v1/media/assets/avatar?keepAssetId=:assetId`
+
+Keeps the current avatar asset and removes every other avatar asset owned by the authenticated user.
+
+The frontend calls this endpoint only after the profile has switched to the new avatar. It also cleans orphan assets left by interrupted or previously failed cleanup attempts. Ownership comes from the gateway-injected `x-user-id`, not from a client-provided S3 path.
+
+### Health endpoints
+
+| Endpoint                   | Purpose                                                             | Success |
+| -------------------------- | ------------------------------------------------------------------- | ------- |
+| `GET /api/v1/health/live`  | Confirms that the Node.js process and HTTP server are alive.        | `200`   |
+| `GET /api/v1/health/ready` | Validates required media configuration and actual S3 bucket access. | `200`   |
+| `GET /api/v1/health`       | Backward-compatible alias for the full readiness check.             | `200`   |
+
+Readiness returns `503 Service Unavailable` when the bucket cannot be reached,
+the runtime lacks permission, or required configuration is missing. Docker
+uses the liveness endpoint so a temporary AWS incident does not restart an
+otherwise healthy process.
+
+Example readiness response:
+
+```json
+{
+  "status": "ok",
+  "info": {
+    "configuration": {
+      "status": "up",
+      "cdnUrlValid": true,
+      "region": "ap-southeast-1"
+    },
+    "s3": {
+      "status": "up",
+      "bucket": "bin-ecommerce-media-dev",
+      "latencyMs": 142,
+      "region": "ap-southeast-1"
+    }
+  },
+  "service": "media-service",
+  "version": "1.0.0",
+  "environment": "development"
+}
 ```
 
 ---
@@ -248,6 +357,8 @@ PORT=3010
 NODE_ENV=development
 AWS_REGION=ap-southeast-1
 AWS_S3_BUCKET=bin-ecommerce-media-dev
+AUTH_SERVICE_URL=http://localhost:3001
+INTERNAL_SERVICE_TOKEN=replace-with-a-long-random-secret
 MEDIA_PUBLIC_CDN_URL=https://cdn.example.com
 MEDIA_UPLOAD_EXPIRES_SECONDS=300
 MEDIA_MAX_UPLOAD_SIZE_BYTES=5242880
@@ -256,9 +367,10 @@ MEDIA_MAX_UPLOAD_SIZE_BYTES=5242880
 Lambda:
 
 ```text
-AWS_REGION=ap-southeast-1
 AWS_S3_BUCKET=bin-ecommerce-media-dev
 ```
+
+`AWS_REGION` is supplied by the Lambda runtime and must not be added manually as a Lambda environment variable.
 
 ---
 
@@ -296,6 +408,16 @@ Media Service needs permission to create presigned POST policies for the upload 
 
 ```text
 s3:PutObject on arn:aws:s3:::<bucket>/uploads/original/*
+```
+
+To clean up old avatars, the Media Service runtime role also needs:
+
+```text
+s3:GetObject on arn:aws:s3:::<bucket>/media/processed/avatar/*
+s3:ListBucket on arn:aws:s3:::<bucket>
+  restricted to uploads/original/avatar/* and media/processed/avatar/*
+s3:DeleteObject on arn:aws:s3:::<bucket>/uploads/original/avatar/*
+s3:DeleteObject on arn:aws:s3:::<bucket>/media/processed/avatar/*
 ```
 
 Lambda needs:
@@ -349,11 +471,19 @@ Build service:
 npm run build -w @bin-ecommerce/media-service
 ```
 
-Build Lambda:
+Compile Lambda TypeScript only:
 
 ```bash
 npm run build:lambda -w @bin-ecommerce/media-service
 ```
+
+Build the complete Linux x64 deployment package:
+
+```powershell
+npm run lambda:build
+```
+
+See [docs/aws-s3-lambda-deployment.md](docs/aws-s3-lambda-deployment.md) for deployment and verification.
 
 Run service:
 
