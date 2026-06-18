@@ -9,7 +9,8 @@ import type {
   SQSBatchResponse,
   SQSEvent,
 } from "aws-lambda";
-import sharp, { type FitEnum } from "sharp";
+import sharp = require("sharp");
+import type { FitEnum } from "sharp";
 
 interface ImageVariantConfig {
   name: "thumb" | "medium" | "large";
@@ -31,7 +32,7 @@ const s3 = new S3Client({
 const BUCKET = process.env.AWS_S3_BUCKET;
 const ORIGINAL_PREFIX = "uploads/original/";
 const PROCESSED_PREFIX = "media/processed/";
-const VARIANT_MARKER = /__(thumb|medium|large)\.webp$/;
+const VARIANT_MARKER = /\/(thumb|medium|large)\.webp$/;
 
 const VARIANTS: ImageVariantConfig[] = [
   { name: "thumb", width: 128, height: 128, fit: "cover" },
@@ -39,7 +40,7 @@ const VARIANTS: ImageVariantConfig[] = [
   { name: "large", width: 1080, height: 1080, fit: "inside" },
 ];
 
-// Lambda entrypoint: nhận event từ S3 trực tiếp hoặc SQS bọc S3 event để xử lý ảnh bất đồng bộ.
+// Lambda entrypoint: nhận event trực tiếp từ S3 hoặc event SQS bọc S3 event để resize ảnh bất đồng bộ.
 export async function handler(
   event: S3Event | SQSEvent,
 ): Promise<{ statusCode: number } | SQSBatchResponse> {
@@ -57,7 +58,7 @@ export async function handler(
   return { statusCode: 200 };
 }
 
-// Xử lý batch từ SQS và trả batchItemFailures để AWS chỉ retry những message lỗi.
+// Xử lý batch SQS và trả batchItemFailures để AWS chỉ retry những message lỗi.
 async function handleSqsEvent(event: SQSEvent): Promise<SQSBatchResponse> {
   const failures: SQSBatchResponse["batchItemFailures"] = [];
 
@@ -77,17 +78,17 @@ async function handleSqsEvent(event: SQSEvent): Promise<SQSBatchResponse> {
   return { batchItemFailures: failures };
 }
 
-// Kiểm tra event có phải SQS không để handler dùng được cho cả hai kiểu trigger.
+// Kiểm tra event có phải SQS hay không để handler dùng được cho cả S3 trigger trực tiếp và SQS trigger.
 function isSqsEvent(event: S3Event | SQSEvent): event is SQSEvent {
   return event.Records.some((record) => "messageId" in record);
 }
 
-// Lấy danh sách S3 records hợp lệ, bỏ qua event rỗng để Lambda không fail vô ích.
+// Lấy danh sách S3 record hợp lệ, bỏ qua record rỗng để Lambda không fail vô ích.
 function extractS3Records(event: S3Event): S3EventRecord[] {
   return event.Records?.filter((record) => record.s3?.object?.key) ?? [];
 }
 
-// Xử lý một object ảnh gốc: tải từ S3, resize các biến thể và upload lại vào prefix processed.
+// Xử lý một object ảnh gốc: tải từ S3, resize các biến thể rồi upload vào prefix processed.
 async function processS3Record(record: S3EventRecord): Promise<void> {
   const sourceKey = decodeS3Key(record.s3.object.key);
 
@@ -110,7 +111,7 @@ async function processS3Record(record: S3EventRecord): Promise<void> {
   console.log(`Done processing image: ${sourceKey}`);
 }
 
-// Decode key do S3 event encode khoảng trắng thành dấu cộng và percent-encoding.
+// Decode key vì S3 event encode khoảng trắng thành dấu cộng và dùng percent-encoding.
 function decodeS3Key(encodedKey: string): string {
   return decodeURIComponent(encodedKey.replace(/\+/g, " "));
 }
@@ -124,7 +125,7 @@ function shouldProcessKey(sourceKey: string): boolean {
   );
 }
 
-// Tải object gốc thành Buffer vì sharp cần input dạng Buffer/Stream ổn định để resize nhiều lần.
+// Tải object gốc thành Buffer vì sharp cần input ổn định để resize nhiều biến thể từ cùng một ảnh.
 async function downloadObject(sourceKey: string): Promise<Buffer> {
   const response = await s3.send(
     new GetObjectCommand({ Bucket: BUCKET, Key: sourceKey }),
@@ -154,7 +155,7 @@ function parseOriginalKey(sourceKey: string): ProcessedKeyParts {
   return { purpose, ownerId, assetId };
 }
 
-// Resize một biến thể sang WebP, strip metadata và lưu với cache immutable cho CloudFront.
+// Resize một biến thể sang WebP, strip metadata và lưu cache immutable cho CloudFront.
 async function resizeAndUploadVariant(
   originalBuffer: Buffer,
   keyParts: ProcessedKeyParts,

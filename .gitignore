@@ -1,6 +1,11 @@
 node_modules/
 dist/
 coverage/
+.lambda-package/
+*.zip
+.lambda-verify-*.json
+lambda-invoke-result.json
+lambda-test-payload.json
 .env
 .env.*
 !.env.example

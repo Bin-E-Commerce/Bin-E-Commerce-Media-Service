@@ -1,0 +1,10 @@
+{
+  "name": "bin-media-image-processor-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1068.0",
+    "semver": "7.8.4",
+    "sharp": "0.33.5"
+  }
+}

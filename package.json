@@ -5,7 +5,11 @@
   "scripts": {
     "build": "nest build",
     "build:lambda": "tsc -p tsconfig.lambda.json",
-    "start": "node --max-old-space-size=100 dist/main",
+    "lambda:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/build-image-processor.ps1",
+    "lambda:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/deploy-image-processor.ps1",
+    "lambda:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-image-processor.ps1",
+    "lambda:verify-pipeline": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-event-pipeline.ps1",
+    "start": "node --max-old-space-size=100 dist/services/media-service/src/main.js",
     "dev": "nest start --watch",
     "lint": "eslint src lambda --ext .ts",
     "type-check": "tsc --noEmit && tsc -p tsconfig.lambda.json --noEmit",
@@ -25,6 +29,7 @@
     "helmet": "^8.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "semver": "^7.7.2",
     "sharp": "^0.33.5"
   },
   "devDependencies": {
