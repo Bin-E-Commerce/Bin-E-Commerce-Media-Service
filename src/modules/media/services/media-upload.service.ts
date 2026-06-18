@@ -7,9 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import {
-  MEDIA_UPLOAD_EXTENSION_BY_MIME_TYPE,
-} from "../constants/media-upload.constant";
+import { MEDIA_UPLOAD_EXTENSION_BY_MIME_TYPE } from "../constants/media-upload.constant";
 import { CreatePresignedUploadDto } from "../dto/create-presigned-upload.dto";
 import type { PresignedUploadResponse } from "../types/media-upload.type";
 
@@ -23,14 +21,17 @@ export class MediaUploadService {
 
   // Khởi tạo S3 client và đọc cấu hình upload một lần để mọi request dùng cùng policy.
   constructor(private readonly configService: ConfigService) {
-    const region = this.configService.get<string>("AWS_REGION", "ap-southeast-1");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-southeast-1",
+    );
     this.bucket = this.configService.get<string>("AWS_S3_BUCKET", "");
     this.expiresIn = this.configService.get<number>(
-      "MEDIA_UPLOAD_EXPIRES_SECONDS",
+      "MEDIA_UPLOAD_EXPIRES_SECONDS", // Thời gian hiệu lực của presigned URL, sau đó URL sẽ không còn hợp lệ để upload nữa. Mặc định là 5 phút để giảm rủi ro lộ URL.
       300,
     );
     this.maxUploadSize = this.configService.get<number>(
-      "MEDIA_MAX_UPLOAD_SIZE_BYTES",
+      "MEDIA_MAX_UPLOAD_SIZE_BYTES", // Kích thước tối đa của file được phép upload. Mặc định là 5MB.
       5 * 1024 * 1024,
     );
     this.publicBaseUrl =
@@ -59,12 +60,14 @@ export class MediaUploadService {
       Key: objectKey,
       Expires: this.expiresIn,
       Fields: {
+        // Các trường này sẽ được gửi kèm trong form upload lên S3, S3 sẽ gắn metadata tương ứng cho object khi upload thành công.
         "Content-Type": dto.contentType,
         "x-amz-meta-asset-id": assetId,
         "x-amz-meta-owner-id": userId,
         "x-amz-meta-purpose": dto.purpose,
       },
       Conditions: [
+        // Các điều kiện này sẽ được S3 kiểm tra khi nhận file upload
         ["content-length-range", 1, this.maxUploadSize],
         ["eq", "$Content-Type", dto.contentType],
         ["eq", "$key", objectKey],

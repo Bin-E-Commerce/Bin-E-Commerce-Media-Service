@@ -7,6 +7,7 @@ export type MediaUploadPurpose = (typeof MEDIA_UPLOAD_PURPOSES)[number];
 
 export type MediaUploadMimeType = (typeof MEDIA_UPLOAD_MIME_TYPES)[number];
 
+// Interface định nghĩa cấu trúc của response khi tạo presigned URL để upload file lên S3. Interface này bao gồm các trường sau:
 export interface PresignedUploadResponse {
   assetId: string;
   objectKey: string;
@@ -17,4 +18,37 @@ export interface PresignedUploadResponse {
     fields: Record<string, string>;
   };
   publicBaseUrl: string | null;
+}
+
+// Interface định nghĩa cấu trúc của response khi xóa một media asset. Interface này bao gồm các trường sau:
+export interface DeleteMediaAssetResponse {
+  assetId: string;
+  deletedCount: number;
+}
+
+export interface AuthUserProfile {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  role: string;
+  status: string;
+  avatarUrl: string | null;
+  createdAt: string;
+}
+
+export interface AuthAvatarUpdateResult {
+  user: AuthUserProfile;
+  oldAvatarUrl: string | null;
+}
+
+export interface ConfirmAvatarResponse {
+  assetId: string;
+  avatarUrl: string;
+  user: AuthUserProfile;
+  cleanup: {
+    status: "deleted" | "deferred" | "skipped";
+    oldAssetId: string | null;
+    deletedCount: number;
+  };
 }
