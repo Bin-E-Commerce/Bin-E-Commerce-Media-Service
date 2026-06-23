@@ -24,7 +24,7 @@ export class AuthProfileClient {
   // Đọc địa chỉ Auth Service và shared token một lần để mọi request nội bộ dùng cùng cấu hình.
   constructor(private readonly configService: ConfigService) {
     this.authServiceUrl = this.configService
-      .get<string>("AUTH_SERVICE_URL", "http://localhost:3001")
+      .get<string>("AUTH_SERVICE_URL", "http://localhost:3002")
       .replace(/\/$/, "");
     this.internalServiceToken = this.configService.get<string>(
       "INTERNAL_SERVICE_TOKEN",
