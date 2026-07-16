@@ -3,6 +3,7 @@ export const MEDIA_UPLOAD_PURPOSES = [
   "product_image",
   "shop_avatar",
   "shop_cover",
+  "seller_document",
   "review_image",
   "chat_image",
 ] as const;
