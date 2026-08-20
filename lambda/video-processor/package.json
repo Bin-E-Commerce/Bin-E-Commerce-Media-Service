@@ -1,0 +1,9 @@
+{
+  "name": "@bin-ecommerce/media-video-processor",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.682.0",
+    "ffmpeg-static": "^5.2.0"
+  }
+}

@@ -27,7 +27,7 @@ export class CreatePresignedUploadDto {
   @ApiProperty({ example: 1200000 })
   @IsInt()
   @Min(1)
-  @Max(20 * 1024 * 1024) // 20MB
+  @Max(30 * 1024 * 1024)
   fileSize: number;
 
   @ApiProperty({ enum: MEDIA_UPLOAD_PURPOSES, example: "avatar" })

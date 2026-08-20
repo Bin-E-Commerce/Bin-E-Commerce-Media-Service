@@ -7,7 +7,15 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { MEDIA_UPLOAD_EXTENSION_BY_MIME_TYPE } from "../constants/media-upload.constant";
+import {
+  MEDIA_IMAGE_UPLOAD_MIME_TYPES,
+  MEDIA_IMAGE_UPLOAD_PURPOSES,
+  MEDIA_MAX_IMAGE_UPLOAD_SIZE_BYTES,
+  MEDIA_MAX_VIDEO_UPLOAD_SIZE_BYTES,
+  MEDIA_UPLOAD_EXTENSION_BY_MIME_TYPE,
+  MEDIA_VIDEO_UPLOAD_MIME_TYPES,
+  MEDIA_VIDEO_UPLOAD_PURPOSES,
+} from "../constants/media-upload.constant";
 import { CreatePresignedUploadDto } from "../dto/create-presigned-upload.dto";
 import type { PresignedUploadResponse } from "../types/media-upload.type";
 
@@ -16,7 +24,8 @@ export class MediaUploadService {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly expiresIn: number;
-  private readonly maxUploadSize: number;
+  private readonly maxImageUploadSize: number;
+  private readonly maxVideoUploadSize: number;
   private readonly publicBaseUrl: string | null;
 
   // Khởi tạo S3 client và đọc cấu hình upload một lần để mọi request dùng cùng policy.
@@ -30,9 +39,13 @@ export class MediaUploadService {
       "MEDIA_UPLOAD_EXPIRES_SECONDS", // Thời gian hiệu lực của presigned URL, sau đó URL sẽ không còn hợp lệ để upload nữa. Mặc định là 5 phút để giảm rủi ro lộ URL.
       300,
     );
-    this.maxUploadSize = this.configService.get<number>(
+    this.maxImageUploadSize = this.configService.get<number>(
       "MEDIA_MAX_UPLOAD_SIZE_BYTES", // Kích thước tối đa của file được phép upload. Mặc định là 5MB.
-      5 * 1024 * 1024,
+      MEDIA_MAX_IMAGE_UPLOAD_SIZE_BYTES,
+    );
+    this.maxVideoUploadSize = this.configService.get<number>(
+      "MEDIA_MAX_VIDEO_UPLOAD_SIZE_BYTES",
+      MEDIA_MAX_VIDEO_UPLOAD_SIZE_BYTES,
     );
     this.publicBaseUrl =
       this.configService.get<string>("MEDIA_PUBLIC_CDN_URL") ?? null;
@@ -47,9 +60,7 @@ export class MediaUploadService {
     if (!this.bucket) {
       throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
     }
-    if (dto.fileSize > this.maxUploadSize) {
-      throw new BadRequestException("File size exceeds upload limit");
-    }
+    const maxUploadSize = this.assertUploadPolicy(dto);
 
     const assetId = randomUUID();
     const objectKey = this.buildOriginalObjectKey(userId, assetId, dto);
@@ -68,7 +79,7 @@ export class MediaUploadService {
       },
       Conditions: [
         // Các điều kiện này sẽ được S3 kiểm tra khi nhận file upload
-        ["content-length-range", 1, this.maxUploadSize],
+        ["content-length-range", 1, maxUploadSize],
         ["eq", "$Content-Type", dto.contentType],
         ["eq", "$key", objectKey],
       ],
@@ -88,6 +99,45 @@ export class MediaUploadService {
   }
 
   // Sinh key theo owner/purpose/asset để client không tự chọn được đường dẫn upload tùy ý.
+  // Áp dụng policy riêng cho ảnh và video để video không dùng nhầm giới hạn của ảnh.
+  private assertUploadPolicy(dto: CreatePresignedUploadDto): number {
+    const isImagePurpose = (MEDIA_IMAGE_UPLOAD_PURPOSES as readonly string[]).includes(
+      dto.purpose,
+    );
+    const isVideoPurpose = (MEDIA_VIDEO_UPLOAD_PURPOSES as readonly string[]).includes(
+      dto.purpose,
+    );
+
+    if (!isImagePurpose && !isVideoPurpose) {
+      throw new BadRequestException("Mục đích tải tệp không hợp lệ.");
+    }
+
+    const allowedMimeTypes: readonly string[] = isVideoPurpose
+      ? MEDIA_VIDEO_UPLOAD_MIME_TYPES
+      : MEDIA_IMAGE_UPLOAD_MIME_TYPES;
+    const maxUploadSize = isVideoPurpose
+      ? this.maxVideoUploadSize
+      : this.maxImageUploadSize;
+
+    if (!allowedMimeTypes.includes(dto.contentType)) {
+      throw new BadRequestException(
+        isVideoPurpose
+          ? "Video chỉ hỗ trợ định dạng MP4 hoặc WebM."
+          : "Ảnh chỉ hỗ trợ định dạng JPG, PNG hoặc WebP.",
+      );
+    }
+
+    if (dto.fileSize > maxUploadSize) {
+      throw new BadRequestException(
+        isVideoPurpose
+          ? "Video không được vượt quá 30 MB."
+          : "Ảnh không được vượt quá 5 MB.",
+      );
+    }
+
+    return maxUploadSize;
+  }
+
   private buildOriginalObjectKey(
     userId: string,
     assetId: string,

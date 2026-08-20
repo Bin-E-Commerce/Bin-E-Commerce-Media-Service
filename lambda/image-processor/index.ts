@@ -33,6 +33,7 @@ const BUCKET = process.env.AWS_S3_BUCKET;
 const ORIGINAL_PREFIX = "uploads/original/";
 const PROCESSED_PREFIX = "media/processed/";
 const VARIANT_MARKER = /\/(thumb|medium|large)\.webp$/;
+const IMAGE_EXTENSION_PATTERN = /\.(?:jpe?g|png|webp)$/i;
 
 const VARIANTS: ImageVariantConfig[] = [
   { name: "thumb", width: 128, height: 128, fit: "cover" },
@@ -121,7 +122,8 @@ function shouldProcessKey(sourceKey: string): boolean {
   return (
     sourceKey.startsWith(ORIGINAL_PREFIX) &&
     !sourceKey.startsWith(PROCESSED_PREFIX) &&
-    !VARIANT_MARKER.test(sourceKey)
+    !VARIANT_MARKER.test(sourceKey) &&
+    IMAGE_EXTENSION_PATTERN.test(sourceKey)
   );
 }
 

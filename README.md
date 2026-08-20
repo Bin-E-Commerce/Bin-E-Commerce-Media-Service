@@ -1,10 +1,12 @@
 # Media Service
 
-Image uploads should not clog the backend. This service grants direct upload access to S3, asynchronously resizes images using Lambda, and then optimally distributes the images via CloudFront.
+Image and video uploads should not clog the backend. This service grants direct upload access to S3, asynchronously creates optimized media variants using Lambda, and distributes the result through CloudFront.
 
 ```text
-Frontend -> Media Service -> S3 -> SQS/Lambda -> S3 processed images -> CloudFront
+Frontend -> Media Service -> S3 -> SQS/Lambda -> S3 processed media -> CloudFront
 ```
+
+Video processing is documented separately in [`docs/video-processing.md`](docs/video-processing.md). The deployed pipeline creates 360p, 720p, 1080p MP4 profiles, a WebP poster and a manifest for product videos.
 
 ---
 
@@ -82,6 +84,7 @@ The repository contains two runtimes with different responsibilities:
 | --- | --- | --- | --- |
 | Media HTTP service | `src/app.module.ts` | Validate upload requests and create presigned S3 POST policies | Local process, container, ECS or Kubernetes |
 | Image processor | `lambda/image-processor/index.ts` | Consume S3/SQS events and create WebP variants | AWS Lambda |
+| Video processor | `lambda/video-processor/index.ts` | Consume SQS events and create MP4 profiles, poster and manifest | AWS Lambda |
 
 Deploying the NestJS media service does not update Lambda. Deploying Lambda does not restart the HTTP service.
 

@@ -12,3 +12,4 @@ lambda-test-payload.json
 *.log
 .DS_Store
 Thumbs.db
+lambda/video-processor/ffmpeg-release-amd64-static.tar.xz
