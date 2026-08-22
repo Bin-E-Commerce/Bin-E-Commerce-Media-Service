@@ -1,5 +1,6 @@
 import {
   Controller,
+  Body,
   Delete,
   Headers,
   HttpCode,
@@ -13,7 +14,9 @@ import {
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AvatarService } from "../services/avatar.service";
 import { MediaAssetService } from "../services/media-asset.service";
+import { CleanupProductAssetsDto } from "../dto/cleanup-product-assets.dto";
 import type {
+  CleanupProductAssetsResponse,
   ConfirmAvatarResponse,
   DeleteMediaAssetResponse,
 } from "../types/media-upload.type";
@@ -27,6 +30,21 @@ export class MediaAssetController {
     private readonly mediaAssetService: MediaAssetService,
     private readonly avatarService: AvatarService,
   ) {}
+
+  // Xóa asset sản phẩm sau khi transaction cập nhật product đã commit; media service tự giới hạn trong prefix của user.
+  @Post("product/cleanup")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Delete removed product media assets" })
+  cleanupProductAssets(
+    @Headers("x-user-id") userId: string | undefined,
+    @Body() dto: CleanupProductAssetsDto,
+  ): Promise<CleanupProductAssetsResponse> {
+    if (!userId) {
+      throw new UnauthorizedException("Missing authenticated user context");
+    }
+
+    return this.mediaAssetService.cleanupProductAssets(userId, dto.assets);
+  }
 
   // Xác nhận asset mới sau khi upload để backend tự cập nhật hồ sơ và dọn avatar cũ trong một request.
   @Post("avatar/:assetId/confirm")

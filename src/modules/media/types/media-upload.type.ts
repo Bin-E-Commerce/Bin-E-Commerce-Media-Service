@@ -1,11 +1,25 @@
 import type {
   MEDIA_UPLOAD_MIME_TYPES,
   MEDIA_UPLOAD_PURPOSES,
+  PRODUCT_MEDIA_CLEANUP_PURPOSES,
 } from "../constants/media-upload.constant";
 
 export type MediaUploadPurpose = (typeof MEDIA_UPLOAD_PURPOSES)[number];
 
 export type MediaUploadMimeType = (typeof MEDIA_UPLOAD_MIME_TYPES)[number];
+
+export type ProductMediaCleanupPurpose =
+  (typeof PRODUCT_MEDIA_CLEANUP_PURPOSES)[number];
+
+export interface ProductMediaCleanupAsset {
+  assetId: string;
+  purpose: ProductMediaCleanupPurpose;
+}
+
+export interface CleanupProductAssetsResponse {
+  requestedAssetCount: number;
+  deletedCount: number;
+}
 
 // Interface định nghĩa cấu trúc của response khi tạo presigned URL để upload file lên S3. Interface này bao gồm các trường sau:
 export interface PresignedUploadResponse {

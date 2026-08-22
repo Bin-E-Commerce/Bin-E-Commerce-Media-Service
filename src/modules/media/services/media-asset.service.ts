@@ -9,7 +9,11 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { DeleteMediaAssetResponse } from "../types/media-upload.type";
+import type {
+  CleanupProductAssetsResponse,
+  DeleteMediaAssetResponse,
+  ProductMediaCleanupAsset,
+} from "../types/media-upload.type";
 
 const S3_DELETE_BATCH_SIZE = 1000;
 
@@ -93,6 +97,39 @@ export class MediaAssetService {
 
     return {
       assetId,
+      deletedCount: objectKeys.length,
+    };
+  }
+
+  // Xóa cả object gốc và mọi biến thể đã xử lý của các asset bị loại khỏi product, theo batch để giảm số lần gọi S3.
+  async cleanupProductAssets(
+    userId: string,
+    assets: ProductMediaCleanupAsset[],
+  ): Promise<CleanupProductAssetsResponse> {
+    if (!this.bucket) {
+      throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
+    }
+
+    const safeUserId = this.toSafePathSegment(userId);
+    const uniqueAssets = Array.from(
+      new Map(assets.map((asset) => [`${asset.purpose}:${asset.assetId}`, asset])).values(),
+    );
+    const prefixes = uniqueAssets.flatMap((asset) => [
+      `uploads/original/${asset.purpose}/${safeUserId}/${asset.assetId}/`,
+      `media/processed/${asset.purpose}/${safeUserId}/${asset.assetId}/`,
+    ]);
+    const keyGroups = await Promise.all(prefixes.map((prefix) => this.listObjectKeys(prefix)));
+    const objectKeys = [...new Set(keyGroups.flat())];
+
+    if (objectKeys.length > 0) {
+      await this.deleteObjectKeys(objectKeys);
+    }
+
+    this.logger.log(
+      `Cleaned ${objectKeys.length} objects for ${uniqueAssets.length} product media assets`,
+    );
+    return {
+      requestedAssetCount: uniqueAssets.length,
       deletedCount: objectKeys.length,
     };
   }
