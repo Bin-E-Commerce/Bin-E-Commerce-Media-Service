@@ -1,8 +1,11 @@
 import {
   DeleteObjectsCommand,
+  GetObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { randomUUID } from "crypto";
 import {
   Injectable,
   Logger,
@@ -14,6 +17,8 @@ import type {
   DeleteMediaAssetResponse,
   ProductMediaCleanupAsset,
 } from "../types/media-upload.type";
+import type { AiAssetUploadResponse } from "../types/ai-asset-upload.type";
+import type { AiAssetUploadDto } from "../dto/ai-asset-upload.dto";
 
 const S3_DELETE_BATCH_SIZE = 1000;
 
@@ -28,6 +33,53 @@ export class MediaAssetService {
     const region = this.configService.get<string>("AWS_REGION", "ap-southeast-1");
     this.bucket = this.configService.get<string>("AWS_S3_BUCKET", "");
     this.s3 = new S3Client({ region });
+  }
+
+  // Luu output AI vao prefix rieng, khong chen vao upload user va khong ghi de asset goc.
+  async uploadAiAsset(dto: AiAssetUploadDto): Promise<AiAssetUploadResponse> {
+    if (!this.bucket) throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
+    const allowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedContentTypes.includes(dto.contentType)) throw new ServiceUnavailableException("Unsupported AI image type");
+    const assetId = randomUUID();
+    const safeOwnerId = this.toSafePathSegment(dto.sellerOwnerId);
+    const safeJobId = this.toSafePathSegment(dto.jobId);
+    const safeFileName = this.toSafeFileBaseName(dto.fileName);
+    const objectKey = `media/processed/ai_optimization/${safeOwnerId}/${safeJobId}/${assetId}/${safeFileName}`;
+    const body = Buffer.from(dto.contentBase64, "base64");
+    if (body.length > 8 * 1024 * 1024) throw new ServiceUnavailableException("AI image is too large");
+    await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: objectKey, Body: body, ContentType: dto.contentType, Metadata: { "asset-id": assetId, "owner-id": dto.sellerOwnerId, purpose: "ai_optimization", "job-id": dto.jobId } }));
+    const publicBaseUrl = this.configService.get<string>("MEDIA_PUBLIC_CDN_URL", "").replace(/\/$/, "");
+    return { assetId, objectKey, publicUrl: publicBaseUrl ? `${publicBaseUrl}/${objectKey}` : null };
+  }
+
+  // Doc byte anh goc qua service token; worker khong duoc tu truy cap S3 va khong nhan URL tu seller.
+  async downloadInternalAsset(
+    ownerId: string,
+    assetId: string,
+    purpose: "product_image" | "ai_optimization",
+  ): Promise<{ body: Buffer; contentType: string; fileName: string }> {
+    if (!this.bucket) throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
+    const prefix = `uploads/original/${purpose}/${this.toSafePathSegment(ownerId)}/${this.toSafePathSegment(assetId)}/`;
+    const keys = await this.listObjectKeys(prefix);
+    const objectKey = keys[0];
+    if (!objectKey) throw new ServiceUnavailableException("Source media asset is unavailable");
+    const response = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }));
+    if (!response.Body) throw new ServiceUnavailableException("Source media asset is unavailable");
+    const body = Buffer.from(await response.Body.transformToByteArray());
+    return {
+      body,
+      contentType: response.ContentType ?? "application/octet-stream",
+      fileName: objectKey.split("/").pop() ?? "source-image",
+    };
+  }
+
+  // Xoa output theo prefix job, chi duoc goi boi service token va khong cham vao asset goc product.
+  async cleanupAiOutputs(ownerId: string, jobId: string): Promise<number> {
+    if (!this.bucket) throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
+    const prefix = `media/processed/ai_optimization/${this.toSafePathSegment(ownerId)}/${this.toSafePathSegment(jobId)}/`;
+    const objectKeys = await this.listObjectKeys(prefix);
+    if (objectKeys.length > 0) await this.deleteObjectKeys(objectKeys);
+    return objectKeys.length;
   }
 
   // Dọn mọi avatar cũ của user và giữ nguyên asset hiện tại để tự khắc phục cả những lần cleanup trước bị bỏ sót.
@@ -195,5 +247,10 @@ export class MediaAssetService {
   // Chuẩn hóa user ID thành path segment an toàn giống quy tắc tạo upload key.
   private toSafePathSegment(value: string): string {
     return value.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120);
+  }
+
+  // Rut gon ten file ve path segment an toan de AI worker khong the chen dau / vao S3 key.
+  private toSafeFileBaseName(value: string): string {
+    return value.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "ai-output";
   }
 }

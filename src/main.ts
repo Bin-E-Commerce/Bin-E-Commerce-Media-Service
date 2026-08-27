@@ -2,6 +2,7 @@ import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 
@@ -9,6 +10,7 @@ import { AppModule } from "./app.module";
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn", "log"],
+    bodyParser: false,
   });
 
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
@@ -16,6 +18,11 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   const isDev = config.get<string>("NODE_ENV") !== "production";
   const port = config.get<number>("PORT", 3004);
+  const requestBodyLimit = config.get<string>("MEDIA_REQUEST_BODY_LIMIT", "12mb");
+
+  // Tắt parser mặc định để payload base64 của AI không bị Express chặn ở giới hạn 100 KB trước khi vào controller.
+  app.use(json({ limit: requestBodyLimit }));
+  app.use(urlencoded({ extended: true, limit: requestBodyLimit }));
 
   app.use(helmet());
   app.setGlobalPrefix("api");
