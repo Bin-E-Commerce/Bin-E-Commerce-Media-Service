@@ -1,4 +1,4 @@
-/** Response asset AI da duoc Media Service so huu lifecycle. */
+//  Response asset AI da duoc Media Service so huu lifecycle.
 export interface AiAssetUploadResponse {
   assetId: string;
   objectKey: string;

@@ -61,7 +61,11 @@ export class MediaAssetService {
     if (!this.bucket) throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
     const prefix = `uploads/original/${purpose}/${this.toSafePathSegment(ownerId)}/${this.toSafePathSegment(assetId)}/`;
     const keys = await this.listObjectKeys(prefix);
-    const objectKey = keys[0];
+    // Sau khi apply, product có thể tham chiếu asset AI cũ. Tìm trong prefix AI cùng owner
+    // để hỗ trợ tái tối ưu dữ liệu legacy mà chưa có sourceAssetId; không bao giờ quét ngoài owner.
+    const objectKey = keys[0] ?? (purpose === "product_image"
+      ? await this.findProcessedAiAssetKey(ownerId, assetId)
+      : undefined);
     if (!objectKey) throw new ServiceUnavailableException("Source media asset is unavailable");
     const response = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }));
     if (!response.Body) throw new ServiceUnavailableException("Source media asset is unavailable");
@@ -71,6 +75,14 @@ export class MediaAssetService {
       contentType: response.ContentType ?? "application/octet-stream",
       fileName: objectKey.split("/").pop() ?? "source-image",
     };
+  }
+
+  // Tìm đúng asset AI theo path segment, tránh match nhầm asset có ID chỉ là một phần chuỗi.
+  private async findProcessedAiAssetKey(ownerId: string, assetId: string): Promise<string | undefined> {
+    const ownerPrefix = `media/processed/ai_optimization/${this.toSafePathSegment(ownerId)}/`;
+    const assetSegment = `/${this.toSafePathSegment(assetId)}/`;
+    const keys = await this.listObjectKeys(ownerPrefix);
+    return keys.find((key) => key.includes(assetSegment));
   }
 
   // Xoa output theo prefix job, chi duoc goi boi service token va khong cham vao asset goc product.
