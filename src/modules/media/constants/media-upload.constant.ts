@@ -9,12 +9,17 @@ export const MEDIA_IMAGE_UPLOAD_PURPOSES = [
   "ai_optimization",
 ] as const;
 
-export const MEDIA_VIDEO_UPLOAD_PURPOSES = ["product_video"] as const;
+export const MEDIA_VIDEO_UPLOAD_PURPOSES = ["product_video", "review_video"] as const;
 
 export const PRODUCT_MEDIA_CLEANUP_PURPOSES = [
   "product_image",
   "product_video",
   "ai_optimization",
+] as const;
+
+export const REVIEW_MEDIA_CLEANUP_PURPOSES = [
+  "review_image",
+  "review_video",
 ] as const;
 
 export const MEDIA_UPLOAD_PURPOSES = [

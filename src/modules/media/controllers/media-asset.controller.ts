@@ -19,6 +19,7 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { AvatarService } from "../services/avatar.service";
 import { MediaAssetService } from "../services/media-asset.service";
 import { CleanupProductAssetsDto } from "../dto/cleanup-product-assets.dto";
+import { CleanupReviewAssetsDto } from "../dto/cleanup-review-assets.dto";
 import { AiAssetUploadDto } from "../dto/ai-asset-upload.dto";
 import type { AiAssetUploadResponse } from "../types/ai-asset-upload.type";
 import type {
@@ -96,6 +97,26 @@ export class MediaAssetController {
     }
 
     return this.mediaAssetService.cleanupProductAssets(userId, dto.assets);
+  }
+
+  // Cleanup review chỉ nhận asset ID/purpose và dùng internal token để Product Service không thể xóa ngoài owner scope.
+  @Post("review/cleanup")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Delete removed review media assets" })
+  cleanupReviewAssets(
+    @Headers("x-internal-service-token") serviceToken: string | undefined,
+    @Headers("x-user-id") userId: string | undefined,
+    @Body() dto: CleanupReviewAssetsDto,
+  ): Promise<CleanupProductAssetsResponse> {
+    const expected = this.config.get<string>("INTERNAL_SERVICE_TOKEN");
+    if (!expected || serviceToken !== expected) {
+      throw new ForbiddenException("Internal service authentication required");
+    }
+    if (!userId) {
+      throw new UnauthorizedException("Missing authenticated user context");
+    }
+
+    return this.mediaAssetService.cleanupReviewAssets(userId, dto.assets);
   }
 
   // Xác nhận asset mới sau khi upload để backend tự cập nhật hồ sơ và dọn avatar cũ trong một request.

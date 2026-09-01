@@ -15,7 +15,9 @@ import { ConfigService } from "@nestjs/config";
 import type {
   CleanupProductAssetsResponse,
   DeleteMediaAssetResponse,
+  MediaCleanupAsset,
   ProductMediaCleanupAsset,
+  ReviewMediaCleanupAsset,
 } from "../types/media-upload.type";
 import type { AiAssetUploadResponse } from "../types/ai-asset-upload.type";
 import type { AiAssetUploadDto } from "../dto/ai-asset-upload.dto";
@@ -170,6 +172,23 @@ export class MediaAssetService {
     userId: string,
     assets: ProductMediaCleanupAsset[],
   ): Promise<CleanupProductAssetsResponse> {
+    return this.cleanupAssets(userId, assets, "product media");
+  }
+
+  // Xóa media review đã bị loại khỏi database bằng cùng cơ chế S3 batch với product media.
+  async cleanupReviewAssets(
+    userId: string,
+    assets: ReviewMediaCleanupAsset[],
+  ): Promise<CleanupProductAssetsResponse> {
+    return this.cleanupAssets(userId, assets, "review media");
+  }
+
+  // Dùng chung prefix owner/asset/purpose để cleanup nhiều loại media mà không nhận S3 key tùy ý từ caller.
+  private async cleanupAssets(
+    userId: string,
+    assets: MediaCleanupAsset[],
+    label: string,
+  ): Promise<CleanupProductAssetsResponse> {
     if (!this.bucket) {
       throw new ServiceUnavailableException("AWS_S3_BUCKET is not configured");
     }
@@ -190,7 +209,7 @@ export class MediaAssetService {
     }
 
     this.logger.log(
-      `Cleaned ${objectKeys.length} objects for ${uniqueAssets.length} product media assets`,
+      `Cleaned ${objectKeys.length} objects for ${uniqueAssets.length} ${label} assets`,
     );
     return {
       requestedAssetCount: uniqueAssets.length,

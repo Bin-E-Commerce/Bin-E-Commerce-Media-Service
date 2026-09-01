@@ -2,6 +2,7 @@ import type {
   MEDIA_UPLOAD_MIME_TYPES,
   MEDIA_UPLOAD_PURPOSES,
   PRODUCT_MEDIA_CLEANUP_PURPOSES,
+  REVIEW_MEDIA_CLEANUP_PURPOSES,
 } from "../constants/media-upload.constant";
 
 export type MediaUploadPurpose = (typeof MEDIA_UPLOAD_PURPOSES)[number];
@@ -11,9 +12,26 @@ export type MediaUploadMimeType = (typeof MEDIA_UPLOAD_MIME_TYPES)[number];
 export type ProductMediaCleanupPurpose =
   (typeof PRODUCT_MEDIA_CLEANUP_PURPOSES)[number];
 
+export type ReviewMediaCleanupPurpose =
+  (typeof REVIEW_MEDIA_CLEANUP_PURPOSES)[number];
+
+export type MediaCleanupPurpose =
+  | ProductMediaCleanupPurpose
+  | ReviewMediaCleanupPurpose;
+
+export interface MediaCleanupAsset {
+  assetId: string;
+  purpose: MediaCleanupPurpose;
+}
+
 export interface ProductMediaCleanupAsset {
   assetId: string;
   purpose: ProductMediaCleanupPurpose;
+}
+
+export interface ReviewMediaCleanupAsset {
+  assetId: string;
+  purpose: ReviewMediaCleanupPurpose;
 }
 
 export interface CleanupProductAssetsResponse {
