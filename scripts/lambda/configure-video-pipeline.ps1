@@ -97,7 +97,16 @@ if ($null -ne $existingNotification.QueueConfigurations) {
 }
 
 # Mỗi purpose ảnh có prefix riêng để không nhận video và không tạo rule overlap.
-$imagePurposes = @("avatar", "product_image", "shop_avatar", "shop_cover", "seller_document", "review_image", "chat_image")
+$imagePurposes = @(
+    "avatar",
+    "product_image",
+    "shop_avatar",
+    "shop_cover",
+    "seller_document",
+    "review_image",
+    "return_image",
+    "chat_image"
+)
 foreach ($purpose in $imagePurposes) {
     $queueConfigurations += [pscustomobject]@{
         Id = "resize-original-image-$purpose"

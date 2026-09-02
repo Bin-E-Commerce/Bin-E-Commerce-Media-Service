@@ -1,3 +1,6 @@
+// File này khai báo các purpose media được phép upload/cleanup trong Media Service.
+// Bằng chứng hoàn hàng chỉ dùng return_image/return_video; file không sở hữu settlement hay chứng từ chuyển tiền.
+
 export const MEDIA_IMAGE_UPLOAD_PURPOSES = [
   "avatar",
   "product_image",
@@ -5,11 +8,12 @@ export const MEDIA_IMAGE_UPLOAD_PURPOSES = [
   "shop_cover",
   "seller_document",
   "review_image",
+  "return_image",
   "chat_image",
   "ai_optimization",
 ] as const;
 
-export const MEDIA_VIDEO_UPLOAD_PURPOSES = ["product_video", "review_video"] as const;
+export const MEDIA_VIDEO_UPLOAD_PURPOSES = ["product_video", "review_video", "return_video"] as const;
 
 export const PRODUCT_MEDIA_CLEANUP_PURPOSES = [
   "product_image",
@@ -20,6 +24,8 @@ export const PRODUCT_MEDIA_CLEANUP_PURPOSES = [
 export const REVIEW_MEDIA_CLEANUP_PURPOSES = [
   "review_image",
   "review_video",
+  "return_image",
+  "return_video",
 ] as const;
 
 export const MEDIA_UPLOAD_PURPOSES = [
