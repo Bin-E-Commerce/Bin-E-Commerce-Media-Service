@@ -16,7 +16,7 @@ import {
   MEDIA_VIDEO_UPLOAD_MIME_TYPES,
   MEDIA_VIDEO_UPLOAD_PURPOSES,
 } from "../constants/media-upload.constant";
-import { CreatePresignedUploadDto } from "../dto/create-presigned-upload.dto";
+import { CreatePresignedUploadDto } from "../../presentation/dto/create-presigned-upload.dto";
 import type { PresignedUploadResponse } from "../types/media-upload.type";
 
 @Injectable()

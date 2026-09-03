@@ -7,8 +7,8 @@ import {
   IsUUID,
   ValidateNested,
 } from "class-validator";
-import { REVIEW_MEDIA_CLEANUP_PURPOSES } from "../constants/media-upload.constant";
-import type { ReviewMediaCleanupAsset } from "../types/media-upload.type";
+import { REVIEW_MEDIA_CLEANUP_PURPOSES } from "../../application/constants/media-upload.constant";
+import type { ReviewMediaCleanupAsset } from "../../application/types/media-upload.type";
 
 export class ReviewMediaCleanupAssetDto implements ReviewMediaCleanupAsset {
   @IsUUID("all")

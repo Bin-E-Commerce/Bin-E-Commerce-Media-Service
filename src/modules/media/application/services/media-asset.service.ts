@@ -20,7 +20,7 @@ import type {
   ReviewMediaCleanupAsset,
 } from "../types/media-upload.type";
 import type { AiAssetUploadResponse } from "../types/ai-asset-upload.type";
-import type { AiAssetUploadDto } from "../dto/ai-asset-upload.dto";
+import type { AiAssetUploadDto } from "../../presentation/dto/ai-asset-upload.dto";
 
 const S3_DELETE_BATCH_SIZE = 1000;
 

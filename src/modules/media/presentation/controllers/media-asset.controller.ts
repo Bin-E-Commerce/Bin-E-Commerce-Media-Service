@@ -16,17 +16,17 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { AvatarService } from "../services/avatar.service";
-import { MediaAssetService } from "../services/media-asset.service";
+import { AvatarService } from "../../application/services/avatar.service";
+import { MediaAssetService } from "../../application/services/media-asset.service";
 import { CleanupProductAssetsDto } from "../dto/cleanup-product-assets.dto";
 import { CleanupReviewAssetsDto } from "../dto/cleanup-review-assets.dto";
 import { AiAssetUploadDto } from "../dto/ai-asset-upload.dto";
-import type { AiAssetUploadResponse } from "../types/ai-asset-upload.type";
+import type { AiAssetUploadResponse } from "../../application/types/ai-asset-upload.type";
 import type {
   CleanupProductAssetsResponse,
   ConfirmAvatarResponse,
   DeleteMediaAssetResponse,
-} from "../types/media-upload.type";
+} from "../../application/types/media-upload.type";
 
 // Controller để xử lý các request liên quan đến media assets
 @ApiTags("media assets")

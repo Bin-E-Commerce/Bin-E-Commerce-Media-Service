@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { ConfirmAvatarResponse } from "../types/media-upload.type";
-import { AuthProfileClient } from "./auth-profile.client";
+import { AuthProfileClient } from "../clients/auth-profile.client";
 import { MediaAssetService } from "./media-asset.service";
 
 const UUID_V4_PATTERN =

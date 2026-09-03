@@ -7,8 +7,8 @@ import {
   IsUUID,
   ValidateNested,
 } from "class-validator";
-import { PRODUCT_MEDIA_CLEANUP_PURPOSES } from "../constants/media-upload.constant";
-import type { ProductMediaCleanupPurpose } from "../types/media-upload.type";
+import { PRODUCT_MEDIA_CLEANUP_PURPOSES } from "../../application/constants/media-upload.constant";
+import type { ProductMediaCleanupPurpose } from "../../application/types/media-upload.type";
 
 export class ProductMediaCleanupAssetDto {
   // Asset import có thể dùng UUID v5, còn asset upload mới thường là UUID v4.

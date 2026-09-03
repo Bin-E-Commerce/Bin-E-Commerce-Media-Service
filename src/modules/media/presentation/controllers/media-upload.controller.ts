@@ -7,8 +7,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CreatePresignedUploadDto } from "../dto/create-presigned-upload.dto";
-import { MediaUploadService } from "../services/media-upload.service";
-import type { PresignedUploadResponse } from "../types/media-upload.type";
+import { MediaUploadService } from "../../application/services/media-upload.service";
+import type { PresignedUploadResponse } from "../../application/types/media-upload.type";
 
 @ApiTags("media uploads")
 @Controller("media/uploads")
