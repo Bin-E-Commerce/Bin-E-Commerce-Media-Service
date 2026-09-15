@@ -1,495 +1,683 @@
-# Media Service
+<p align="center">
+  <img src="../../web/public/images/logo/logo_background_white.png" alt="Bin E-Commerce" width="190" />
+</p>
 
-Image and video uploads should not clog the backend. This service grants direct upload access to S3, asynchronously creates optimized media variants using Lambda, and distributes the result through CloudFront.
+<h1 align="center">Media Service</h1>
 
-```text
-Frontend -> Media Service -> S3 -> SQS/Lambda -> S3 processed media -> CloudFront
-```
+<p align="center">
+  Move every image and video from upload to secure CDN delivery without exposing storage credentials.
+</p>
 
-Video processing is documented separately in [`docs/video-processing.md`](docs/video-processing.md). The deployed pipeline creates 360p, 720p, 1080p MP4 profiles, a WebP poster and a manifest for product videos.
+<p align="center">
+  <img src="https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white" alt="NestJS 11" />
+  <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/AWS-S3-FF9900?logo=amazonaws&logoColor=white" alt="AWS S3" />
+  <img src="https://img.shields.io/badge/Sharp-image%20processing-99CC00?logo=sharp&logoColor=111111" alt="Sharp" />
+  <img src="https://img.shields.io/badge/Lambda-processing-FF9900?logo=awslambda&logoColor=white" alt="AWS Lambda" />
+  <img src="https://img.shields.io/badge/CloudFront-CDN-8C4FFF?logo=amazonaws&logoColor=white" alt="CloudFront" />
+</p>
 
----
+## Contents
 
-## Why It Exists
+1. [Problem](#1-problem)
+2. [Service at a glance](#2-service-at-a-glance)
+3. [What it owns](#3-what-it-owns)
+4. [Architecture](#4-architecture)
+5. [Trust surface](#5-trust-surface)
+6. [See It Work](#6-see-it-work)
+7. [Install](#7-install)
+8. [Upload Contract](#8-upload-contract)
+9. [S3 Key Strategy](#9-s3-key-strategy)
+10. [Asset Lifecycle](#10-asset-lifecycle)
+11. [Avatar Flow](#11-avatar-flow)
+12. [AI Asset Flow](#12-ai-asset-flow)
+13. [Cleanup and Deletion](#13-cleanup-and-deletion)
+14. [API Surface](#14-api-surface)
+15. [Health and Readiness](#15-health-and-readiness)
+16. [Project Structure](#16-project-structure)
+17. [Configuration Reference](#17-configuration-reference)
+18. [Development](#18-development)
+19. [Testing Strategy](#19-testing-strategy)
+20. [Lambda Operations](#20-lambda-operations)
+21. [Security and Privacy](#21-security-and-privacy)
+22. [Operational Notes](#22-operational-notes)
+23. [Documentation Findings](#23-documentation-findings)
+24. [FAQ](#24-faq)
+25. [Ownership](#25-ownership)
 
-In e-commerce, images are everywhere: avatars, product images, shop images, review images, chat images. If every file went through the backend, the service would consume RAM, CPU, and bandwidth, and could easily become congested when users upload many images simultaneously.
+## 1. Problem
 
-Media Services solves this by letting the backend only do what it should: verify upload permissions, grant presigned upload policies, and manage metadata. Large files go directly from the browser to S3, while resizing runs in the background using Lambda.
+Images, videos and generated assets are large, long-lived and often processed asynchronously. Sending every byte through the API Gateway or a NestJS process makes the application layer a bandwidth bottleneck. At the same time, allowing a browser to choose an arbitrary S3 key or receive long-lived AWS credentials creates an ownership and data-leak risk.
 
----
+The platform needs one place to answer:
 
-## Trust & Security
+- Who may upload this asset?
+- What purpose is the upload for?
+- How large and what type may it be?
+- Which object key and CDN URL represent the asset?
+- When is an uploaded object safe to reference from a product, review or profile?
+- How are old, rejected, orphaned or AI-generated objects cleaned up?
 
-This service touches external infrastructure, so the permission surface is explicit.
+Media Service solves this with a server-controlled upload contract. The server validates the request, generates a short-lived presigned POST with a server-owned key, lets the client upload directly to S3 and then confirms or processes the asset. Product, review and user domains keep their own business records; Media owns the object lifecycle.
 
-| Concern                     | Design                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Backend receives raw files? | No. Browser uploads directly to S3 using presigned POST.                                                            |
-| Who chooses the S3 key?     | Backend only. Client cannot choose arbitrary paths.                                                                 |
-| Upload expiry               | Presigned POST expires through `MEDIA_UPLOAD_EXPIRES_SECONDS`.                                                      |
-| File type control           | DTO validation plus S3 POST policy restricts MIME type. Lambda should still validate magic bytes in the next phase. |
-| File size control           | DTO validation plus S3 content-length-range policy.                                                                 |
-| Bucket visibility           | Designed for private S3 bucket plus CloudFront, not public S3 reads.                                                |
-| Resize loop prevention      | Lambda only processes `uploads/original/*` and skips processed variants.                                            |
-| Failure isolation           | Handler supports SQS batch failures, so one bad image does not poison the whole batch.                              |
-| Old avatar cleanup          | Media Service derives prefixes from authenticated user ID plus asset ID; clients cannot submit arbitrary S3 keys.  |
+## 2. Service at a glance
 
----
+| Attribute | Value |
+| --- | --- |
+| Service | media-service |
+| Default port | 3004 |
+| HTTP prefix | /api |
+| URI version | v1 |
+| Development docs | /docs |
+| Liveness | /api/health/live |
+| Readiness | /api/health/ready |
+| Object storage | AWS S3 |
+| Public delivery | Configured CDN URL |
+| Image tooling | Sharp and Lambda processor |
+| Video tooling | Dedicated Lambda processor |
+| Body parser | Explicit JSON/urlencoded limit for media/AI payloads |
 
-## Architecture
+### Runtime responsibilities
 
-```text
-1. Frontend asks Media Service for upload permission
-2. Media Service validates user context, file type, file size and purpose
-3. Media Service returns presigned POST fields
-4. Frontend uploads the original file directly to S3
-5. S3 emits ObjectCreated event
-6. Event goes directly to Lambda or through SQS
-7. Lambda downloads original image from S3
-8. Lambda creates WebP variants with sharp
-9. Lambda writes processed images back to S3
-10. CloudFront serves processed images to the application
-```
+Media Service owns:
+
+1. Upload policy creation.
+2. Safe object-key construction.
+3. Asset confirmation and URL construction.
+4. Avatar update coordination with Auth Service.
+5. Internal AI asset upload/download.
+6. Product/review cleanup within owner and purpose prefixes.
+7. S3-aware readiness checks.
+
+It does not own product state, review text, seller profile data or AI ranking/model decisions.
+
+## 3. What it owns
+
+| Domain boundary | Media Service owns |
+| --- | --- |
+| Upload authorization | Purpose, type, size, expiry and owner-scoped policy |
+| Object identity | Asset ID and S3 key generation |
+| Storage adapter | S3 put/list/get/delete operations |
+| Public URL | CDN URL construction from controlled object keys |
+| Avatar lifecycle | Confirm new avatar, update Auth profile, prune old objects |
+| AI asset lifecycle | Upload, download and cleanup of generated outputs |
+| Product/review cleanup | Batch deletion of assets removed after a domain transaction |
+| Processing boundary | Image/video worker build and deployment scripts |
+
+### What it does not own
+
+| Concern | Source of truth |
+| --- | --- |
+| User profile/avatar field | Auth Service |
+| Product media relationship | Product Service |
+| Review media relationship | Product Service |
+| AI job status/ranking decision | AI/Recommendation Service |
+| S3 bucket policy/IAM account | AWS/deployment platform |
+| Product or review authorization | Their owning domain plus trusted context |
+
+Media stores and serves objects; a domain service decides whether an asset is part of a product, review or profile.
+
+## 4. Architecture
+
+~~~text
+Browser / trusted service
+          |
+          v
+     API Gateway
+          |
+          v
+    Media Service
+       /     \
+      v       v
+  S3 bucket  Auth Service
+      |
+      +--> CDN delivery
+      +--> Lambda image/video processing
+~~~
+
+### Upload path
+
+~~~text
+Client -> POST media/uploads/presign
+       -> validate DTO and owner/purpose
+       -> create short-lived S3 POST policy
+       -> return asset ID, key and form fields
+Client -> uploads directly to S3
+Client -> confirm/domain operation
+       -> Media builds controlled URL or starts processing
+~~~
+
+### Layer responsibilities
+
+- Presentation controllers own route mapping, DTO binding, UUID parsing and stream responses.
+- Application services own upload, avatar, download and cleanup rules.
+- AuthProfileClient updates the Auth profile through an internal contract.
+- S3 clients are infrastructure adapters; callers never receive arbitrary bucket operations.
+- Lambda code owns worker execution, while the NestJS service owns HTTP contracts and orchestration.
+
+The service disables Express's default body parser and registers explicit JSON/urlencoded limits. This is required because internal AI asset payloads can be larger than the default parser limit.
+
+## 5. Trust surface
 
 <details>
-<summary><b>Detailed flow</b></summary>
+<summary>What Media Service trusts and rejects</summary>
 
-```text
-Frontend
-  -> POST /api/v1/media/uploads/presign
-  -> receives assetId + presigned POST
-  -> uploads file to uploads/original/{purpose}/{userId}/{assetId}/{file}
+### Trusted after validation
 
-S3
-  -> ObjectCreated event
-  -> SQS queue, recommended for production
+- A user identity forwarded by the Gateway for avatar/product/review operations.
+- A service-authenticated internal caller for AI assets and cleanup.
+- An asset ID that matches the expected UUID format.
+- A purpose from the allowed media-purpose set.
+- S3 objects addressed through a server-generated owner/purpose/asset prefix.
+- Auth Service's response when updating the profile through its internal endpoint.
 
-Lambda image-processor
-  -> reads SQS message or S3 event
-  -> downloads original
-  -> creates thumb, medium, large variants
-  -> writes to media/processed/{purpose}/{userId}/{assetId}/{variant}.webp
+### Never trusted directly
 
-CloudFront
-  -> serves processed images with immutable cache headers
-```
+- An arbitrary S3 key or bucket path from a browser.
+- A client-provided CDN URL as proof of ownership.
+- A file extension as proof of content type.
+- An asset ID without owner/purpose prefix verification.
+- A cleanup request that can delete objects outside the caller's owner scope.
+- An AI output request that can overwrite the original product image.
+
+The security model is prefix-based and owner-scoped. Even an asset ID that exists elsewhere must not allow a caller to read or delete an object outside the expected owner and purpose path.
 
 </details>
 
-### Two independent deployables
+## 6. See It Work
 
-The repository contains two runtimes with different responsibilities:
+### 6.1. Start local
 
-| Runtime | Source | Responsibility | Deployment target |
-| --- | --- | --- | --- |
-| Media HTTP service | `src/app.module.ts` | Validate upload requests and create presigned S3 POST policies | Local process, container, ECS or Kubernetes |
-| Image processor | `lambda/image-processor/index.ts` | Consume S3/SQS events and create WebP variants | AWS Lambda |
-| Video processor | `lambda/video-processor/index.ts` | Consume SQS events and create MP4 profiles, poster and manifest | AWS Lambda |
+~~~powershell
+cd services/media-service
+Copy-Item .env.example .env
+npm install
+npm run dev
+~~~
 
-Deploying the NestJS media service does not update Lambda. Deploying Lambda does not restart the HTTP service.
+The service expects AWS/S3 configuration for real upload behavior. Auth Service is also required for avatar confirmation.
 
----
+### 6.2. Check health and readiness
 
-## Quick Demo
+~~~powershell
+curl http://localhost:3004/api/health/live
+curl http://localhost:3004/api/health/ready
+~~~
 
-Start the service:
+Liveness checks whether the process is running. Readiness includes the media dependency checks needed by the current health module, so a live process is not automatically ready to accept upload traffic.
 
-```bash
-npm run dev -w @bin-ecommerce/media-service
-```
+### 6.3. Open API documentation
 
-Request a presigned upload:
+Open http://localhost:3004/docs in development. Browser traffic in the platform should normally use the equivalent API Gateway route rather than calling the service directly.
 
-```bash
-curl -X POST http://localhost:3010/api/v1/media/uploads/presign \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: user_123" \
-  -d '{
-    "fileName": "avatar.jpg",
-    "contentType": "image/jpeg",
-    "fileSize": 1200000,
-    "purpose": "avatar"
-  }'
-```
+### 6.4. Upload flow
 
-Example response:
+~~~powershell
+curl -X POST http://localhost:3001/api/v1/media/uploads/presign -H "Authorization: Bearer <keycloak-access-token>" -H "Content-Type: application/json" -d '{"fileName":"avatar.jpg","contentType":"image/jpeg","purpose":"avatar"}'
+~~~
 
-```json
-{
-  "assetId": "7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2",
-  "objectKey": "uploads/original/avatar/user_123/7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2/avatar.jpg",
-  "expiresIn": 300,
-  "status": "uploading",
-  "upload": {
-    "url": "https://bin-ecommerce-media-dev.s3.amazonaws.com",
-    "fields": {
-      "Content-Type": "image/jpeg",
-      "key": "uploads/original/avatar/user_123/7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2/avatar.jpg"
-    }
-  },
-  "publicBaseUrl": "https://cdn.example.com"
-}
-```
-
-Build the Lambda processor package:
+The response contains a server-generated asset ID and upload policy. The client must submit the returned fields to S3; it must not replace the key with a self-selected path.
 
-```powershell
-npm run lambda:build
-```
+## 7. Install
 
-Deploy it to the existing AWS function:
+> [!IMPORTANT]
+> Media Service requires an S3 bucket, AWS region, CDN base URL and runtime credentials. It also calls Auth Service for avatar updates and exposes protected internal contracts for AI/cleanup workflows. Never commit AWS credentials, internal tokens or production bucket details.
 
-```powershell
-npm run lambda:deploy
-```
+### Required dependencies
 
-Deploy an already-built zip:
+| Dependency | Why it is required |
+| --- | --- |
+| AWS S3 | Original and processed object storage |
+| CDN | Public delivery URL for approved media |
+| Auth Service | Avatar profile update and old-avatar cleanup coordination |
+| API Gateway | Browser authentication and route boundary |
+| Lambda/runtime worker | Optional asynchronous image/video processing |
 
-```powershell
-npm run lambda:deploy -- -SkipBuild
-```
+### Local build
 
-Smoke-test an existing original image:
+~~~powershell
+cd services/media-service
+Copy-Item .env.example .env
+npm run type-check
+npm run lint
+npm test -- --runInBand
+npm run build
+npm run start
+~~~
 
-```powershell
-npm run lambda:verify -- -ObjectKey "uploads/original/avatar/{userId}/{assetId}/avatar.jpg"
-```
+### Recovery and rollback
 
-Verify the full asynchronous event pipeline:
+Rolling back application code does not delete S3 objects or restore a previous avatar automatically. Treat object cleanup, profile rollback and product/review reference repair as separate audited operations.
 
-```powershell
-npm run lambda:verify-pipeline -- -SourceObjectKey "uploads/original/avatar/{userId}/{assetId}/avatar.jpg"
-```
+## 8. Upload Contract
 
----
+### Request validation
 
-## API
+The presign DTO defines the accepted file name, content type and media purpose. The service applies configured size and expiry limits before issuing a policy.
 
-### `POST /api/v1/media/uploads/presign`
+The policy should constrain:
 
-Creates a presigned S3 POST policy. The caller uploads the file directly to S3 using the returned `url` and `fields`.
+- Exact or controlled object key.
+- Expected content type.
+- Maximum content length.
+- Short expiration window.
+- Asset metadata such as asset ID and purpose.
 
-Required header:
-
-```text
-x-user-id: <authenticated-user-id>
-```
-
-Request body:
-
-```json
-{
-  "fileName": "product-main.jpg",
-  "contentType": "image/jpeg",
-  "fileSize": 2400000,
-  "purpose": "product_image"
-}
-```
-
-Supported `purpose` values:
-
-```text
-avatar
-product_image
-shop_avatar
-shop_cover
-review_image
-chat_image
-```
-
-Supported MIME types:
-
-```text
-image/jpeg
-image/png
-image/webp
-```
-
-### `POST /api/v1/media/assets/avatar/:assetId/confirm`
-
-Confirms that Lambda has created `medium.webp`, updates `users.avatar_url`
-through the internal Auth Service endpoint, and then removes the previous
-avatar asset.
-
-The client sends only `assetId`. Media Service derives the owner and CloudFront
-URL from trusted server configuration, so the client cannot submit an arbitrary
-avatar URL.
-
-```json
-{
-  "assetId": "7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2",
-  "avatarUrl": "https://cdn.example.com/media/processed/avatar/user-id/7c1b8b3a-7a73-4d65-8d10-9f6f4d3ef9d2/medium.webp",
-  "cleanup": {
-    "status": "deleted",
-    "oldAssetId": "6b0a7604-3a15-4c37-bc15-6a039e14e895",
-    "deletedCount": 4
-  }
-}
-```
-
-If cleanup fails after the profile update, the endpoint still returns the new
-avatar with `cleanup.status = "deferred"`. A cleanup failure must not roll back
-a valid profile update.
-
-### `DELETE /api/v1/media/assets/avatar/:assetId`
-
-Deletes the original object and all processed variants of an old avatar owned by the authenticated user.
-
-### `DELETE /api/v1/media/assets/avatar?keepAssetId=:assetId`
-
-Keeps the current avatar asset and removes every other avatar asset owned by the authenticated user.
-
-The frontend calls this endpoint only after the profile has switched to the new avatar. It also cleans orphan assets left by interrupted or previously failed cleanup attempts. Ownership comes from the gateway-injected `x-user-id`, not from a client-provided S3 path.
+### Why presigned POST
 
-### Health endpoints
+Presigned POST lets the browser upload directly to S3 without receiving an AWS access key. It also lets the server constrain the destination and upload conditions. The NestJS process handles control-plane requests, not the entire file byte stream.
 
-| Endpoint                   | Purpose                                                             | Success |
-| -------------------------- | ------------------------------------------------------------------- | ------- |
-| `GET /api/v1/health/live`  | Confirms that the Node.js process and HTTP server are alive.        | `200`   |
-| `GET /api/v1/health/ready` | Validates required media configuration and actual S3 bucket access. | `200`   |
-| `GET /api/v1/health`       | Backward-compatible alias for the full readiness check.             | `200`   |
+### Confirm is a separate trust boundary
 
-Readiness returns `503 Service Unavailable` when the bucket cannot be reached,
-the runtime lacks permission, or required configuration is missing. Docker
-uses the liveness endpoint so a temporary AWS incident does not restart an
-otherwise healthy process.
+S3 accepting bytes does not automatically mean a domain may reference the asset. Confirmation/processing checks that the object belongs to the expected owner/purpose and that the next domain operation can safely reference it.
 
-Example readiness response:
+## 9. S3 Key Strategy
 
-```json
-{
-  "status": "ok",
-  "info": {
-    "configuration": {
-      "status": "up",
-      "cdnUrlValid": true,
-      "region": "ap-southeast-1"
-    },
-    "s3": {
-      "status": "up",
-      "bucket": "bin-ecommerce-media-dev",
-      "latencyMs": 142,
-      "region": "ap-southeast-1"
-    }
-  },
-  "service": "media-service",
-  "version": "1.0.0",
-  "environment": "development"
-}
-```
+### Original user uploads
 
----
+The service builds keys from controlled segments such as:
 
-## S3 Key Strategy
+~~~text
+uploads/original/<purpose>/<owner-id>/<asset-id>/<safe-file-name>
+~~~
 
-Original uploads:
+### Processed assets
 
-```text
-uploads/original/{purpose}/{userId}/{assetId}/{safeFileName}.{ext}
-```
+~~~text
+media/processed/<purpose>/<owner-id>/<asset-id>/<variant>
+~~~
 
-Processed variants:
+### AI optimization outputs
 
-```text
-media/processed/{purpose}/{userId}/{assetId}/thumb.webp
-media/processed/{purpose}/{userId}/{assetId}/medium.webp
-media/processed/{purpose}/{userId}/{assetId}/large.webp
-```
+~~~text
+media/processed/ai_optimization/<owner-id>/<job-id>/<asset-id>/<safe-file-name>
+~~~
 
-Why this shape:
+### Key invariants
 
-- `purpose` separates business use cases such as avatar and product image.
-- `userId` keeps ownership visible in the object path.
-- `assetId` gives every upload an immutable identity.
-- Processed images are separated from originals to prevent recursive processing.
+- Owner and asset IDs are normalized to safe path segments.
+- File names cannot inject path separators.
+- The client never supplies a final S3 key.
+- AI output uses a separate prefix and cannot overwrite the original product image.
+- Cleanup lists keys under known prefixes instead of accepting arbitrary delete keys.
 
----
+These invariants make object access auditable and make cleanup bounded.
 
-## Lambda Image Processor
+## 10. Asset Lifecycle
 
-Source:
+~~~text
+requested -> policy issued -> uploaded -> confirmed -> processed/published
+                                 |             |
+                                 v             v
+                              expired       cleanup
+~~~
 
-```text
-lambda/image-processor/index.ts
-```
+### State responsibilities
 
-Variants:
+| Stage | Responsibility |
+| --- | --- |
+| Requested | Validate actor, purpose, file type and size |
+| Policy issued | Return a short-lived S3 upload form |
+| Uploaded | S3 holds bytes under a server-owned key |
+| Confirmed | Verify expected object and produce domain-safe response |
+| Processed | Create resized/optimized variants when required |
+| Published | Domain service references the approved URL/asset |
+| Cleanup | Delete removed, rejected, expired or obsolete objects |
 
-| Variant  | Size        | Fit    | Format |
-| -------- | ----------- | ------ | ------ |
-| `thumb`  | 128 x 128   | cover  | WebP   |
-| `medium` | 512 x 512   | inside | WebP   |
-| `large`  | 1080 x 1080 | inside | WebP   |
+An uploaded object can become orphaned when a browser abandons a form or a domain transaction rolls back. Cleanup must therefore be idempotent and purpose-scoped.
 
-The Lambda uses `sharp` to:
+## 11. Avatar Flow
 
-- rotate images according to EXIF orientation,
-- avoid upscaling small images,
-- convert output to WebP,
-- write long-lived cache headers for CDN delivery.
+~~~text
+User requests avatar presign
+       -> upload original to S3
+       -> image processor creates medium.webp
+       -> POST avatar/:assetId/confirm
+       -> Media builds CDN URL
+       -> Auth Service updates avatar field
+       -> Media prunes older avatar objects
+~~~
 
-<details>
-<summary><b>Supported trigger modes</b></summary>
+### Important ordering
 
-### MVP mode
+The new profile URL is written before old assets are cleaned. If old-object cleanup fails, the new avatar remains valid and the failure is logged for reconciliation. Cleanup must never roll the profile back to a broken old URL simply because deletion had a partial failure.
 
-```text
-S3 ObjectCreated -> Lambda
-```
+### Ownership
 
-This is simpler to set up and good for early development.
+Avatar keys are scoped under the normalized user ID. Delete-all keeps the current asset when one is supplied and removes sibling/orphan avatar objects under that user's known prefixes.
 
-### Production mode
+## 12. AI Asset Flow
 
-```text
-S3 ObjectCreated -> SQS -> Lambda
-```
+~~~text
+AI Worker -> internal AI upload
+          -> Media writes output under ai_optimization prefix
+AI Worker -> internal asset download by owner + asset ID
+AI Service -> Product workflow applies or rejects output
+AI Worker/retention -> internal job cleanup
+~~~
 
-This is recommended for production because SQS gives controlled retries, failure isolation and dead-letter queue support.
+The internal AI upload accepts controlled payload metadata and stores output in a dedicated prefix. Download resolves by owner and asset ID rather than accepting a URL from the worker. Cleanup by job removes generated outputs only; it does not remove the original product image.
 
-</details>
+Media Service owns the storage boundary, not the AI decision about whether an output is good enough to apply.
 
----
+## 13. Cleanup and Deletion
 
-## Environment Variables
+### Product/review cleanup
 
-Media Service:
+Product and review cleanup requests contain asset IDs and purposes, not arbitrary S3 keys. The service expands each asset into known original/processed prefixes and deletes in S3-sized batches.
 
-```text
-PORT=3010
-NODE_ENV=development
-AWS_REGION=ap-southeast-1
-AWS_S3_BUCKET=bin-ecommerce-media-dev
-AUTH_SERVICE_URL=http://localhost:3001
-INTERNAL_SERVICE_TOKEN=replace-with-a-long-random-secret
-MEDIA_PUBLIC_CDN_URL=https://cdn.example.com
-MEDIA_UPLOAD_EXPIRES_SECONDS=300
-MEDIA_MAX_UPLOAD_SIZE_BYTES=5242880
-```
+### Idempotency
 
-Lambda:
+- Repeating cleanup for an already-deleted asset returns a safe zero/empty result.
+- Duplicate asset entries are de-duplicated before list/delete.
+- Delete operations are bounded by the owner and purpose prefix.
+- Partial S3 failures are surfaced and logged instead of being reported as a complete success.
+- Cleanup occurs after the owning domain transaction has committed.
 
-```text
-AWS_S3_BUCKET=bin-ecommerce-media-dev
-```
+### Deletion safety
 
-`AWS_REGION` is supplied by the Lambda runtime and must not be added manually as a Lambda environment variable.
+Never delete an object merely because its ID appears in a client payload. Resolve the caller identity, derive the expected prefixes and preserve any asset still referenced by the domain owner.
 
----
+## 14. API Surface
 
-## AWS Setup Checklist
+All application routes use /api/v1. Health routes are under /api/health.
 
-<details>
-<summary><b>S3 bucket</b></summary>
+### Upload and avatar
 
-- Create a private bucket, for example `bin-ecommerce-media-dev`.
-- Block public access.
-- Add CORS for browser uploads.
-- Configure ObjectCreated event on prefix `uploads/original/`.
-- Route the event to Lambda directly for MVP or SQS for production.
+| Method | Route | Purpose |
+| --- | --- | --- |
+| POST | /api/v1/media/uploads/presign | Create a controlled S3 upload form |
+| POST | /api/v1/media/assets/avatar/:assetId/confirm | Confirm processed avatar and update Auth |
+| DELETE | /api/v1/media/assets/avatar | Remove old avatar objects while preserving current state as required |
+| DELETE | /api/v1/media/assets/avatar/:assetId | Delete an owned avatar asset |
 
-Example CORS:
+### Internal and domain cleanup
 
-```json
-[
-  {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["POST"],
-    "AllowedOrigins": ["http://localhost:5173"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
-```
+| Method | Route | Purpose |
+| --- | --- | --- |
+| POST | /api/v1/media/assets/internal/ai-assets/upload | Upload an AI-generated output |
+| GET | /api/v1/media/assets/internal/assets/:assetId/download | Download an owner-scoped source/output |
+| POST | /api/v1/media/assets/internal/ai-assets/:jobId/cleanup | Remove AI outputs for a job |
+| POST | /api/v1/media/assets/product/cleanup | Delete removed product assets |
+| POST | /api/v1/media/assets/review/cleanup | Delete removed review assets |
 
-</details>
+### Health
 
-<details>
-<summary><b>IAM permissions</b></summary>
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | /api/health/live | Process liveness |
+| GET | /api/health/ready | Storage/readiness state |
 
-Media Service needs permission to create presigned POST policies for the upload prefix:
+Internal routes require service authentication and should not be made browser-facing through an unprotected reverse proxy.
 
-```text
-s3:PutObject on arn:aws:s3:::<bucket>/uploads/original/*
-```
+## 15. Health and Readiness
 
-To clean up old avatars, the Media Service runtime role also needs:
+### Liveness
 
-```text
-s3:GetObject on arn:aws:s3:::<bucket>/media/processed/avatar/*
-s3:ListBucket on arn:aws:s3:::<bucket>
-  restricted to uploads/original/avatar/* and media/processed/avatar/*
-s3:DeleteObject on arn:aws:s3:::<bucket>/uploads/original/avatar/*
-s3:DeleteObject on arn:aws:s3:::<bucket>/media/processed/avatar/*
-```
+Liveness answers whether the Node process and HTTP listener are alive. It should stay lightweight and should not be used as proof that S3 upload is possible.
 
-Lambda needs:
+### Readiness
 
-```text
-s3:GetObject on arn:aws:s3:::<bucket>/uploads/original/*
-s3:PutObject on arn:aws:s3:::<bucket>/media/processed/*
-```
+Readiness uses the media health indicator to check the configured storage dependency and required runtime settings. A missing bucket or invalid storage configuration should make readiness fail clearly rather than allowing an upload policy that cannot complete.
 
-If Lambda reads from SQS:
+### Operational interpretation
 
-```text
-sqs:ReceiveMessage
-sqs:DeleteMessage
-sqs:GetQueueAttributes
-```
+| Result | Meaning |
+| --- | --- |
+| Live healthy, ready healthy | Process can accept expected media traffic |
+| Live healthy, ready unhealthy | Process exists but storage/config dependency needs repair |
+| Live unhealthy | Restart/replace the instance |
 
-</details>
+## 16. Project Structure
 
-<details>
-<summary><b>CloudFront</b></summary>
+~~~text
+src/
+├── main.ts                              # Body limits, validation, versioning, Swagger
+├── app.module.ts                        # Runtime composition
+├── modules/
+│   ├── health/
+│   │   ├── health.controller.ts         # Live/readiness endpoints
+│   │   └── indicators/                  # S3-aware health indicator
+│   └── media/
+│       ├── application/
+│       │   ├── clients/                 # Auth profile client
+│       │   ├── constants/               # Allowed upload purposes
+│       │   ├── services/                # Upload, asset and avatar use cases
+│       │   └── types/                   # Media/AI upload contracts
+│       ├── presentation/
+│       │   ├── controllers/             # Upload and asset routes
+│       │   └── dto/                     # Presign, AI and cleanup DTOs
+│       └── media.module.ts
+lambda/
+├── image-processor/                     # Image processing handler
+└── video-processor/                     # Video processing handler
+scripts/lambda/                          # Build, deploy, configure and verify
+~~~
 
-Recommended setup:
+The HTTP application and Lambda workers share media concepts but have separate runtime boundaries. Keep worker-specific assumptions out of public controllers.
 
-- S3 bucket remains private.
-- CloudFront uses Origin Access Control.
-- Application reads processed images through CDN URLs.
-- Processed images use `Cache-Control: public, max-age=31536000, immutable`.
+## 17. Configuration Reference
 
-</details>
+### Runtime and internal integration
 
----
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| NODE_ENV | Runtime mode and docs behavior | development |
+| PORT | HTTP listener | 3004 |
+| AUTH_SERVICE_URL | Auth internal profile endpoint | http://localhost:3002 |
+| INTERNAL_SERVICE_TOKEN | Trusted service token | deployment secret |
 
-## Local Development
+### Storage and delivery
 
-Install dependencies:
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| AWS_REGION | S3 region | ap-southeast-1 |
+| AWS_S3_BUCKET | Media bucket | bin-ecommerce-media-dev |
+| MEDIA_PUBLIC_CDN_URL | Public asset base URL | https://cdn.example.com |
 
-```bash
-npm install -w @bin-ecommerce/media-service
-```
+### Upload policy
 
-Type-check:
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| MEDIA_REQUEST_BODY_LIMIT | JSON/urlencoded body limit | 12mb |
+| MEDIA_UPLOAD_EXPIRES_SECONDS | Presigned policy lifetime | 300 |
+| MEDIA_MAX_UPLOAD_SIZE_BYTES | Maximum upload size | 5242880 |
 
-```bash
-npm run type-check -w @bin-ecommerce/media-service
-```
+Use [.env.example](./.env.example) as the local variable template. In production, prefer IAM roles and secret-manager injection over static AWS credentials.
 
-Build service:
+## 18. Development
+
+### Commands
+
+| Command | Purpose |
+| --- | --- |
+| npm run dev | Start Nest watch mode |
+| npm run build | Build the HTTP service |
+| npm run start | Run the built service |
+| npm run type-check | Check HTTP and Lambda TypeScript |
+| npm run lint | Lint src and Lambda code |
+| npm test | Run Jest tests |
+| npm run build:lambda | Compile Lambda handlers |
 
-```bash
-npm run build -w @bin-ecommerce/media-service
-```
+### Recommended local gate
 
-Compile Lambda TypeScript only:
+~~~powershell
+npm run type-check
+npm run lint
+npm test -- --runInBand
+npm run build
+npm run build:lambda
+~~~
 
-```bash
-npm run build:lambda -w @bin-ecommerce/media-service
-```
+For manual upload testing, use a development S3 bucket or LocalStack-style substitute with a short-lived test policy. Do not use a production bucket to test cleanup.
+
+## 19. Testing Strategy
 
-Build the complete Linux x64 deployment package:
+### Unit tests
 
-```powershell
-npm run lambda:build
-```
+Cover:
 
-See [docs/aws-s3-lambda-deployment.md](docs/aws-s3-lambda-deployment.md) for deployment and verification.
+- Allowed purpose validation.
+- File type and size limits.
+- Server-controlled key construction.
+- Safe path-segment normalization.
+- Presigned policy expiry and conditions.
+- Avatar confirmation and Auth profile update ordering.
+- Owner-scoped avatar pruning.
+- AI output prefix isolation.
+- Internal download owner/purpose lookup.
+- Product/review cleanup de-duplication and batching.
+- Partial S3 delete failure behavior.
 
-Run service:
+### Integration tests
+
+Use an isolated S3-compatible test environment and Auth Service test double to verify:
 
-```bash
-npm run dev -w @bin-ecommerce/media-service
-```
+- Presigned POST fields and restrictions.
+- Upload/confirm behavior.
+- CDN URL construction.
+- Avatar profile update plus old-object cleanup.
+- Internal AI upload/download.
+- Product/review cleanup prefixes.
+- Liveness/readiness when storage is unavailable.
+
+### Acceptance flow
+
+~~~text
+Given an authenticated owner and an allowed image purpose
+When the client requests a presigned upload
+Then the policy contains a server-owned key and an expiry
+When the client uploads to S3 and confirms the asset
+Then the response contains a controlled asset/CDN reference
+When the owner replaces an avatar
+Then Auth points to the new avatar before old objects are pruned
+When an AI job is rejected
+Then only that job's generated outputs are cleaned
+~~~
+
+## 20. Lambda Operations
+
+| Command | Purpose |
+| --- | --- |
+| npm run lambda:build | Build image processor |
+| npm run lambda:deploy | Deploy image processor |
+| npm run lambda:verify | Verify image processor |
+| npm run lambda:verify-pipeline | Verify image event pipeline |
+| npm run lambda:video:build | Build video processor |
+| npm run lambda:video:deploy | Deploy video processor |
+| npm run lambda:video:configure | Configure video pipeline |
+
+### Worker release checklist
+
+1. Build the correct Lambda target.
+2. Verify the generated artifact and runtime handler.
+3. Confirm bucket/prefix permissions are least-privilege.
+4. Test one representative image/video input.
+5. Verify output key and content type.
+6. Confirm failed processing does not replace the source object.
+7. Observe duration, memory and error metrics after release.
+
+## 21. Security and Privacy
+
+- Never return AWS credentials to the browser.
+- Keep presigned expiry short and policy scope narrow.
+- Do not accept arbitrary S3 keys, bucket names or CDN URLs from callers.
+- Validate UUIDs and normalize every path segment.
+- Keep internal AI/download/cleanup routes behind the shared service guard.
+- Do not log file bytes, signed fields, AWS secrets or private asset URLs.
+- Treat avatars, reviews and product media as user/customer data.
+- Delete only owner-scoped, purpose-scoped prefixes.
+- Use least-privilege IAM permissions for S3 and Lambda.
+- Keep public CDN policy separate from write/delete permissions.
+
+The Gateway protects public admission, while Media Service independently protects its internal contracts and storage operations. Both layers are required for defense in depth.
+
+## 22. Operational Notes
+
+### Dependency health
+
+Monitor S3 request failures, presigned-policy expiry, upload size rejection, CDN 4xx/5xx, Lambda duration/error rate, orphan object growth and Auth Service avatar update failures.
+
+### Failure matrix
+
+| Failure | Expected behavior |
+| --- | --- |
+| S3 unavailable | Readiness or media operation fails clearly; no fake URL |
+| Missing bucket | Readiness fails and upload is rejected |
+| Presigned policy expired | S3 rejects upload; client requests a new policy |
+| Auth update fails | New avatar must not be reported as fully confirmed |
+| Old cleanup fails | Keep the new avatar; record cleanup failure for reconciliation |
+| AI output rejected | Clean generated prefix only, preserve source |
+| Partial batch delete | Surface failure and retry safely |
+| Lambda processing fails | Preserve original object and mark processing failure through worker contract |
+
+### Deployment checklist
+
+1. Verify AWS region, bucket and IAM permissions.
+2. Verify CDN base URL does not point to the wrong environment.
+3. Verify Auth Service URL and internal token.
+4. Check liveness and readiness.
+5. Run a non-production presign/upload/confirm flow.
+6. Test cleanup in an isolated prefix.
+7. Deploy/verify image and video workers independently.
+
+## 23. Documentation Findings
+
+The following facts should be verified in deployment:
+
+1. Media Service uses port 3004 in the current environment template and body parsing is explicitly configured with a 12 MB default limit.
+2. The configured maximum upload size is 5 MB, which is separate from the request body limit used for JSON/AI payloads.
+3. The service relies on AWS S3 and a CDN URL but does not own a media relational database in the current source layout.
+4. Avatar confirmation updates Auth Service before old-object cleanup; cleanup failure should not make the new profile URL invalid.
+5. AI outputs use a separate ai_optimization prefix and the cleanup route is intentionally prevented from deleting the original product image.
+6. Product and review cleanup should be called after the owning domain transaction commits.
+
+This section records source behavior and operational checks. It does not change AWS, CDN or deployment configuration.
+
+## 24. FAQ
+
+### Why does the client upload directly to S3?
+
+To keep large file bytes out of the API process while preserving server control over key, purpose, size and expiry.
+
+### Is a CDN URL enough to prove ownership?
+
+No. The URL is a delivery reference. Ownership is established by the server-generated key, authenticated context and domain relationship.
+
+### Can a client choose an S3 key?
+
+No. The server constructs the key from controlled owner, purpose and asset segments.
+
+### What happens if a user abandons an upload?
+
+The object may become orphaned under a bounded prefix. Retention/cleanup can remove it without allowing arbitrary bucket deletion.
+
+### Does Media Service update the user profile?
+
+Avatar confirmation calls Auth Service's internal profile contract. Auth Service remains the owner of the user avatar field.
+
+### Does rejecting an AI result delete the original product image?
+
+No. AI outputs live under a separate prefix and cleanup is scoped to the AI job.
+
+### Can the service run without AWS locally?
+
+The process can be bootstrapped only if the health/configuration requirements permit it, but real upload/readiness tests need an S3-compatible dependency or a development bucket.
+
+## 25. Ownership
+
+### Engineering
+
+**Đào Ngọc Anh**
+
+**Software Engineer**
+
+[View portfolio](https://daongocanh.site)
+
+Software Engineer responsible for the architecture, implementation, integration, and maintenance of this service.
+
+### Architecture & API Design
+
+**Đào Ngọc Anh**
+
+Designed the controlled upload boundary, S3/CDN integration, owner-scoped key strategy, avatar lifecycle, AI asset isolation, cleanup contracts, and Lambda processing workflow.
