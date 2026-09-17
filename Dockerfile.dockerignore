@@ -1,0 +1,27 @@
+# Docker context là root repository; chỉ giữ manifest, TypeScript config và source HTTP.
+*
+!tsconfig.base.json
+!services/
+!services/media-service/
+!services/media-service/package.json
+!services/media-service/package-lock.json
+!services/media-service/tsconfig.json
+!services/media-service/src/
+!services/media-service/src/**
+
+# Không đưa dependency/output/secret local vào build context.
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!services/media-service/.env.example
+
+# Lambda, script triển khai và tài liệu có lifecycle riêng, không cần cho HTTP image.
+services/media-service/lambda
+services/media-service/scripts
+services/media-service/docs
+**/.git
+**/.gitignore
+**/.vscode
+**/*.log

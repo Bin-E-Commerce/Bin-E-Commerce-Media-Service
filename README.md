@@ -69,8 +69,8 @@ Media Service solves this with a server-controlled upload contract. The server v
 | HTTP prefix | /api |
 | URI version | v1 |
 | Development docs | /docs |
-| Liveness | /api/health/live |
-| Readiness | /api/health/ready |
+| Liveness | /api/v1/health/live |
+| Readiness | /api/v1/health/ready |
 | Object storage | AWS S3 |
 | Public delivery | Configured CDN URL |
 | Image tooling | Sharp and Lambda processor |
@@ -200,8 +200,8 @@ The service expects AWS/S3 configuration for real upload behavior. Auth Service 
 ### 6.2. Check health and readiness
 
 ~~~powershell
-curl http://localhost:3004/api/health/live
-curl http://localhost:3004/api/health/ready
+curl http://localhost:3004/api/v1/health/live
+curl http://localhost:3004/api/v1/health/ready
 ~~~
 
 Liveness checks whether the process is running. Readiness includes the media dependency checks needed by the current health module, so a live process is not automatically ready to accept upload traffic.
@@ -380,7 +380,7 @@ Never delete an object merely because its ID appears in a client payload. Resolv
 
 ## 14. API Surface
 
-All application routes use /api/v1. Health routes are under /api/health.
+All application routes, including health, use /api/v1.
 
 ### Upload and avatar
 
@@ -405,8 +405,8 @@ All application routes use /api/v1. Health routes are under /api/health.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET | /api/health/live | Process liveness |
-| GET | /api/health/ready | Storage/readiness state |
+| GET | /api/v1/health/live | Process liveness |
+| GET | /api/v1/health/ready | Storage/readiness state |
 
 Internal routes require service authentication and should not be made browser-facing through an unprotected reverse proxy.
 
