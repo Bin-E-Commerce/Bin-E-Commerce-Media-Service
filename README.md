@@ -303,6 +303,23 @@ media/processed/ai_optimization/<owner-id>/<job-id>/<asset-id>/<safe-file-name>
 
 These invariants make object access auditable and make cleanup bounded.
 
+### Browser upload CORS
+
+Presigned POST uploads run directly from the browser to S3, so the bucket must allow the
+frontend origins and the `POST` method. Apply the shared policy in
+[`docs/s3-cors.json`](./docs/s3-cors.json) with:
+
+~~~bash
+aws s3api put-bucket-cors \
+  --bucket "$AWS_S3_BUCKET" \
+  --cors-configuration file://services/media-service/docs/s3-cors.json \
+  --region "$AWS_REGION"
+~~~
+
+The deploy IAM identity needs `s3:PutBucketCORS` for this one-time configuration. The
+application runtime does not need that permission; it only needs object upload/read/delete
+permissions required by Media Service.
+
 ## 10. Asset Lifecycle
 
 ~~~text
