@@ -9,7 +9,7 @@ import type {
   SQSBatchResponse,
   SQSEvent,
 } from "aws-lambda";
-import sharp = require("sharp");
+import sharp from "sharp";
 import type { FitEnum } from "sharp";
 
 interface ImageVariantConfig {
