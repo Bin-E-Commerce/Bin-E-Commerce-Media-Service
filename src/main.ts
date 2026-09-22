@@ -1,3 +1,6 @@
+// File này khởi động Media Service, cấu hình body parser, security boundary và telemetry.
+// File không xử lý upload business rule; các module media/lambda sở hữu phần đó.
+
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
@@ -5,8 +8,10 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { setupHttpObservability } from "../../../packages/common/observability/http-observability";
 
 // Khởi động HTTP server cho media-service và gắn các middleware bảo mật/validation dùng chung.
+// Khởi động media boundary sau khi cấu hình parser an toàn và middleware cross-cutting.
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn", "log"],
@@ -26,6 +31,8 @@ async function bootstrap(): Promise<void> {
 
   app.use(helmet());
   app.setGlobalPrefix("api");
+  // Đăng ký metrics RED và request ID trước khi service bắt đầu nhận traffic.
+  setupHttpObservability(app, "media-service");
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
   app.useGlobalPipes(
     new ValidationPipe({

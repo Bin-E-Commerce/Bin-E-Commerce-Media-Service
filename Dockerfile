@@ -14,6 +14,7 @@ WORKDIR /app
 COPY services/media-service/package.json services/media-service/package-lock.json ./
 COPY tsconfig.base.json ./tsconfig.base.json
 COPY services/media-service/tsconfig.json ./services/media-service/tsconfig.json
+COPY packages/common ./packages/common
 
 # Cài cả dev dependency để có TypeScript trong lúc build, nhưng không chạy
 # lifecycle script tự động từ package bên ngoài.
@@ -47,6 +48,7 @@ WORKDIR /app
 
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/services/media-service/dist/services/media-service/src ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/services/media-service/dist/packages/common ./dist/packages/common
 
 # Port thật của Media Service là 3004; có thể override bằng Compose/Kubernetes.
 ENV NODE_ENV=production \

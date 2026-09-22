@@ -1,6 +1,9 @@
 # Docker context là root repository; chỉ giữ manifest, TypeScript config và source HTTP.
 *
 !tsconfig.base.json
+!packages/
+!packages/common/
+!packages/common/**
 !services/
 !services/media-service/
 !services/media-service/package.json
