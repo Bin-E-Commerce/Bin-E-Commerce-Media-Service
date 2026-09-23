@@ -18,13 +18,16 @@ COPY packages/common ./packages/common
 
 # Cài cả dev dependency để có TypeScript trong lúc build, nhưng không chạy
 # lifecycle script tự động từ package bên ngoài.
-RUN npm ci --include=dev --ignore-scripts
+ENV NODE_ENV=development
+RUN npm ci --include=dev --bin-links=true --ignore-scripts \
+  && test -x node_modules/.bin/tsc
 
 # Chỉ copy source HTTP; lambda/, scripts/ và docs không thuộc runtime này.
 COPY services/media-service/src ./services/media-service/src
 
 # tsconfig.json của Media dùng rootDir monorepo nên output nằm trong thư mục
-# dist/services/media-service/src và được thu gọn ở production stage.
+# dist/services/media-service/src. Giữ nguyên layout để import tương đối tới
+# dist/packages/common vẫn trỏ đúng shared artifact trong runtime image.
 RUN npx tsc -p services/media-service/tsconfig.json
 
 # Sau khi compile, loại Nest CLI, TypeScript, Jest và các dev dependency khác.
@@ -47,7 +50,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nestjs:nodejs /app/services/media-service/dist/services/media-service/src ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/services/media-service/dist/services/media-service ./dist/services/media-service
 COPY --from=builder --chown=nestjs:nodejs /app/services/media-service/dist/packages/common ./dist/packages/common
 
 # Port thật của Media Service là 3004; có thể override bằng Compose/Kubernetes.
@@ -65,4 +68,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 USER nestjs
 
 # Chạy Node trực tiếp để nhận SIGTERM đúng trong Docker/Kubernetes rollout.
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/services/media-service/src/main.js"]
