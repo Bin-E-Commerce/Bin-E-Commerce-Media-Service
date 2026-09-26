@@ -1,53 +1,54 @@
 {
-  "name": "@bin-ecommerce/media-service",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "nest build",
-    "build:lambda": "tsc -p tsconfig.lambda.json",
-    "lambda:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/build-image-processor.ps1",
-    "lambda:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/deploy-image-processor.ps1",
-    "lambda:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-image-processor.ps1",
-    "lambda:verify-pipeline": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-event-pipeline.ps1",
-    "lambda:video:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/build-video-processor.ps1",
-    "lambda:video:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/deploy-video-processor.ps1",
-    "lambda:video:configure": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/configure-video-pipeline.ps1",
-    "start": "node --max-old-space-size=100 dist/services/media-service/src/main.js",
-    "dev": "nest start --watch",
-    "lint": "eslint src lambda --ext .ts",
-    "type-check": "tsc --noEmit && tsc -p tsconfig.lambda.json --noEmit",
-    "test": "jest"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.682.0",
-    "@aws-sdk/s3-presigned-post": "^3.682.0",
-    "@nestjs/common": "^11.0.7",
-    "@nestjs/config": "^4.0.1",
-    "@nestjs/core": "^11.0.7",
-    "@nestjs/platform-express": "^11.0.7",
-    "@nestjs/swagger": "^11.1.0",
-    "@nestjs/terminus": "^11.0.0",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "helmet": "^8.1.0",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
-    "semver": "^7.7.2",
-    "sharp": "^0.35.4"
-  },
-  "devDependencies": {
-    "@nestjs/cli": "^11.0.5",
-    "@nestjs/testing": "^11.0.7",
-    "@types/aws-lambda": "^8.10.145",
-    "@types/express": "^5.0.6",
-    "@types/jest": "^29.5.14",
-    "@types/node": "^22.10.7",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.2.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
-  },
-  "overrides": {
-    "multer": "2.4.0"
-  }
+    "name": "@bin-ecommerce/media-service",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "build": "nest build && tsc-alias -p tsconfig.build.json",
+        "build:lambda": "tsc -p tsconfig.lambda.json",
+        "lambda:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/build-image-processor.ps1",
+        "lambda:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/deploy-image-processor.ps1",
+        "lambda:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-image-processor.ps1",
+        "lambda:verify-pipeline": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/verify-event-pipeline.ps1",
+        "lambda:video:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/build-video-processor.ps1",
+        "lambda:video:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/deploy-video-processor.ps1",
+        "lambda:video:configure": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lambda/configure-video-pipeline.ps1",
+        "start": "node --max-old-space-size=100 dist/services/media-service/src/main.js",
+        "dev": "nest start --watch",
+        "lint": "eslint src lambda --ext .ts",
+        "type-check": "tsc --noEmit && tsc -p tsconfig.lambda.json --noEmit",
+        "test": "jest"
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "^3.682.0",
+        "@aws-sdk/s3-presigned-post": "^3.682.0",
+        "@nestjs/common": "^11.0.7",
+        "@nestjs/config": "^4.0.1",
+        "@nestjs/core": "^11.0.7",
+        "@nestjs/platform-express": "^11.0.7",
+        "@nestjs/swagger": "^11.1.0",
+        "@nestjs/terminus": "^11.0.0",
+        "class-transformer": "^0.5.1",
+        "class-validator": "^0.14.1",
+        "helmet": "^8.1.0",
+        "reflect-metadata": "^0.2.2",
+        "rxjs": "^7.8.2",
+        "semver": "^7.7.2",
+        "sharp": "^0.35.4"
+    },
+    "devDependencies": {
+        "@nestjs/cli": "^11.0.5",
+        "@nestjs/testing": "^11.0.7",
+        "@types/aws-lambda": "^8.10.145",
+        "@types/express": "^5.0.6",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.10.7",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.5",
+        "ts-node": "^10.9.2",
+        "tsc-alias": "^1.9.4",
+        "typescript": "^5.7.3"
+    },
+    "overrides": {
+        "multer": "2.4.0"
+    }
 }

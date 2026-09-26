@@ -28,7 +28,8 @@ COPY services/media-service/src ./services/media-service/src
 # tsconfig.json của Media dùng rootDir monorepo nên output nằm trong thư mục
 # dist/services/media-service/src. Giữ nguyên layout để import tương đối tới
 # dist/packages/common vẫn trỏ đúng shared artifact trong runtime image.
-RUN npx tsc -p services/media-service/tsconfig.json
+RUN npx tsc -p services/media-service/tsconfig.json \
+  && npx tsc-alias -p services/media-service/tsconfig.json
 
 # Sau khi compile, loại Nest CLI, TypeScript, Jest và các dev dependency khác.
 RUN npm prune --omit=dev
