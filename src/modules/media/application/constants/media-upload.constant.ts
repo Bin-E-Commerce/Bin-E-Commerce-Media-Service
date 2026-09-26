@@ -2,49 +2,56 @@
 // Bằng chứng hoàn hàng chỉ dùng return_image/return_video; file không sở hữu settlement hay chứng từ chuyển tiền.
 
 export const MEDIA_IMAGE_UPLOAD_PURPOSES = [
-  "avatar",
-  "product_image",
-  "shop_avatar",
-  "shop_cover",
-  "seller_document",
-  "review_image",
-  "return_image",
-  "chat_image",
-  "ai_optimization",
+    'avatar',
+    'product_image',
+    'shop_avatar',
+    'shop_cover',
+    'seller_document',
+    'review_image',
+    'return_image',
+    'chat_image',
+    'ai_optimization',
 ] as const;
 
-export const MEDIA_VIDEO_UPLOAD_PURPOSES = ["product_video", "review_video", "return_video"] as const;
+export const MEDIA_VIDEO_UPLOAD_PURPOSES = [
+    'product_video',
+    'review_video',
+    'return_video',
+] as const;
 
 export const PRODUCT_MEDIA_CLEANUP_PURPOSES = [
-  "product_image",
-  "product_video",
-  "ai_optimization",
+    'product_image',
+    'product_video',
+    'ai_optimization',
 ] as const;
 
 export const REVIEW_MEDIA_CLEANUP_PURPOSES = [
-  "review_image",
-  "review_video",
-  "return_image",
-  "return_video",
+    'review_image',
+    'review_video',
+    'return_image',
+    'return_video',
 ] as const;
 
 export const MEDIA_UPLOAD_PURPOSES = [
-  ...MEDIA_IMAGE_UPLOAD_PURPOSES,
-  ...MEDIA_VIDEO_UPLOAD_PURPOSES,
+    ...MEDIA_IMAGE_UPLOAD_PURPOSES,
+    ...MEDIA_VIDEO_UPLOAD_PURPOSES,
 ] as const;
 
 export const MEDIA_IMAGE_UPLOAD_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/jpg",
-  "image/webp",
+    'image/jpeg',
+    'image/png',
+    'image/jpg',
+    'image/webp',
 ] as const;
 
-export const MEDIA_VIDEO_UPLOAD_MIME_TYPES = ["video/mp4", "video/webm"] as const;
+export const MEDIA_VIDEO_UPLOAD_MIME_TYPES = [
+    'video/mp4',
+    'video/webm',
+] as const;
 
 export const MEDIA_UPLOAD_MIME_TYPES = [
-  ...MEDIA_IMAGE_UPLOAD_MIME_TYPES,
-  ...MEDIA_VIDEO_UPLOAD_MIME_TYPES,
+    ...MEDIA_IMAGE_UPLOAD_MIME_TYPES,
+    ...MEDIA_VIDEO_UPLOAD_MIME_TYPES,
 ] as const;
 
 export const MEDIA_MAX_IMAGE_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024;
@@ -54,10 +61,10 @@ export const MEDIA_MAX_VIDEO_UPLOAD_SIZE_BYTES = 30 * 1024 * 1024;
 export const MEDIA_MAX_UPLOAD_SIZE_BYTES = MEDIA_MAX_IMAGE_UPLOAD_SIZE_BYTES;
 
 export const MEDIA_UPLOAD_EXTENSION_BY_MIME_TYPE = {
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "video/mp4": "mp4",
-  "video/webm": "webm",
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
 } as const;

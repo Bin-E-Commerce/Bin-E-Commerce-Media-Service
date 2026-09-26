@@ -1,30 +1,32 @@
 import {
-  Body,
-  Controller,
-  Headers,
-  Post,
-  UnauthorizedException,
-} from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { CreatePresignedUploadDto } from "../dto/create-presigned-upload.dto";
-import { MediaUploadService } from "../../application/services/media-upload.service";
-import type { PresignedUploadResponse } from "../../application/types/media-upload.type";
+    Body,
+    Controller,
+    Headers,
+    Post,
+    UnauthorizedException,
+} from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CreatePresignedUploadDto } from '@/modules/media/presentation/dto/create-presigned-upload.dto';
+import { MediaUploadService } from '@/modules/media/application/services/media-upload.service';
+import type { PresignedUploadResponse } from '@/modules/media/application/types/media-upload.type';
 
-@ApiTags("media uploads")
-@Controller("media/uploads")
+@ApiTags('media uploads')
+@Controller('media/uploads')
 export class MediaUploadController {
-  constructor(private readonly mediaUploadService: MediaUploadService) {}
-  // Cấp presigned POST để frontend upload trực tiếp lên S3, không đẩy file qua backend.
-  @Post("presign")
-  @ApiOperation({ summary: "Create a presigned S3 upload form" })
-  createPresignedUpload(
-    @Headers("x-user-id") userId: string | undefined,
-    @Body() dto: CreatePresignedUploadDto,
-  ): Promise<PresignedUploadResponse> {
-    if (!userId) {
-      throw new UnauthorizedException("Missing authenticated user context");
-    }
+    constructor(private readonly mediaUploadService: MediaUploadService) {}
+    // Cấp presigned POST để frontend upload trực tiếp lên S3, không đẩy file qua backend.
+    @Post('presign')
+    @ApiOperation({ summary: 'Create a presigned S3 upload form' })
+    createPresignedUpload(
+        @Headers('x-user-id') userId: string | undefined,
+        @Body() dto: CreatePresignedUploadDto,
+    ): Promise<PresignedUploadResponse> {
+        if (!userId) {
+            throw new UnauthorizedException(
+                'Missing authenticated user context',
+            );
+        }
 
-    return this.mediaUploadService.createPresignedUpload(userId, dto);
-  }
+        return this.mediaUploadService.createPresignedUpload(userId, dto);
+    }
 }
