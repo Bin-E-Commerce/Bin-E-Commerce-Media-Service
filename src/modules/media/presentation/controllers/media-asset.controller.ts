@@ -21,6 +21,7 @@ import { MediaAssetService } from '@/modules/media/application/services/media-as
 import { CleanupProductAssetsDto } from '@/modules/media/presentation/dto/cleanup-product-assets.dto';
 import { CleanupReviewAssetsDto } from '@/modules/media/presentation/dto/cleanup-review-assets.dto';
 import { AiAssetUploadDto } from '@/modules/media/presentation/dto/ai-asset-upload.dto';
+import { StoreKnowledgeRevisionDto } from '@/modules/media/presentation/dto/store-knowledge-revision.dto';
 import type { AiAssetUploadResponse } from '@/modules/media/application/types/ai-asset-upload.type';
 import type {
     CleanupProductAssetsResponse,
@@ -52,6 +53,49 @@ export class MediaAssetController {
                 'Internal service authentication required',
             );
         return this.mediaAssetService.uploadAiAsset(dto);
+    }
+
+    // Chỉ Seller Service có shared internal token mới lưu được revision Markdown vào prefix riêng trong S3.
+    @Post('internal/knowledge/revisions/:revisionId')
+    @HttpCode(HttpStatus.CREATED)
+    storeKnowledgeRevision(
+        @Headers('x-internal-service-token') serviceToken: string | undefined,
+        @Param('revisionId', new ParseUUIDPipe({ version: '4' }))
+        revisionId: string,
+        @Body() dto: StoreKnowledgeRevisionDto,
+    ): Promise<{ objectKey: string }> {
+        this.assertInternalToken(serviceToken);
+        return this.mediaAssetService.storeKnowledgeRevision(
+            revisionId,
+            dto.markdown,
+        );
+    }
+
+    // Trả source Markdown cho Seller Service phục vụ preview, validate và lập chỉ mục; revision ID là định danh duy nhất.
+    @Get('internal/knowledge/revisions/:revisionId')
+    async getKnowledgeRevision(
+        @Headers('x-internal-service-token') serviceToken: string | undefined,
+        @Param('revisionId', new ParseUUIDPipe({ version: '4' }))
+        revisionId: string,
+    ): Promise<StreamableFile> {
+        this.assertInternalToken(serviceToken);
+        const markdown =
+            await this.mediaAssetService.readKnowledgeRevision(revisionId);
+        return new StreamableFile(Buffer.from(markdown, 'utf8'), {
+            type: 'text/markdown; charset=utf-8',
+        });
+    }
+
+    // Cho Seller Service bù trừ object upload nếu lưu revision metadata thất bại trong PostgreSQL.
+    @Delete('internal/knowledge/revisions/:revisionId')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async deleteKnowledgeRevision(
+        @Headers('x-internal-service-token') serviceToken: string | undefined,
+        @Param('revisionId', new ParseUUIDPipe({ version: '4' }))
+        revisionId: string,
+    ): Promise<void> {
+        this.assertInternalToken(serviceToken);
+        await this.mediaAssetService.deleteKnowledgeRevision(revisionId);
     }
 
     // Endpoint noi bo cho AI Worker tai source theo asset ID, khong cho frontend truyen URL tuy y.
@@ -144,6 +188,15 @@ export class MediaAssetController {
         }
 
         return this.mediaAssetService.cleanupReviewAssets(userId, dto.assets);
+    }
+
+    // Dùng cùng shared secret như các endpoint nội bộ khác; thiếu cấu hình phải fail closed.
+    private assertInternalToken(serviceToken: string | undefined): void {
+        const expected = this.config.get<string>('INTERNAL_SERVICE_TOKEN', '');
+        if (!expected || serviceToken !== expected)
+            throw new ForbiddenException(
+                'Internal service authentication required',
+            );
     }
 
     // Xác nhận asset mới sau khi upload để backend tự cập nhật hồ sơ và dọn avatar cũ trong một request.

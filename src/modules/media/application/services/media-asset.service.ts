@@ -1,4 +1,5 @@
 import {
+    DeleteObjectCommand,
     DeleteObjectsCommand,
     GetObjectCommand,
     ListObjectsV2Command,
@@ -7,6 +8,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import {
+    BadRequestException,
     Injectable,
     Logger,
     ServiceUnavailableException,
@@ -79,6 +81,71 @@ export class MediaAssetService {
             objectKey,
             publicUrl: publicBaseUrl ? `${publicBaseUrl}/${objectKey}` : null,
         };
+    }
+
+    // Lưu source Markdown theo revision bất biến; caller không thể tự chọn bucket hay object key ngoài namespace Seller Knowledge.
+    async storeKnowledgeRevision(
+        revisionId: string,
+        markdown: string,
+    ): Promise<{ objectKey: string }> {
+        if (!this.bucket)
+            throw new ServiceUnavailableException(
+                'AWS_S3_BUCKET is not configured',
+            );
+        const body = Buffer.from(markdown, 'utf8');
+        if (body.length === 0 || body.length > 64 * 1024)
+            throw new BadRequestException(
+                'Knowledge markdown size must be between 1 byte and 64 KiB',
+            );
+        const objectKey = `seller-knowledge/revisions/${revisionId}.md`;
+        await this.s3.send(
+            new PutObjectCommand({
+                Bucket: this.bucket,
+                Key: objectKey,
+                Body: body,
+                ContentType: 'text/markdown; charset=utf-8',
+                Metadata: {
+                    'revision-id': revisionId,
+                    purpose: 'seller-knowledge',
+                },
+            }),
+        );
+        return { objectKey };
+    }
+
+    // Đọc source theo revision ID đã xác thực; không nhận object key để chặn đọc chéo prefix hoặc dò file S3.
+    async readKnowledgeRevision(revisionId: string): Promise<string> {
+        if (!this.bucket)
+            throw new ServiceUnavailableException(
+                'AWS_S3_BUCKET is not configured',
+            );
+        const response = await this.s3.send(
+            new GetObjectCommand({
+                Bucket: this.bucket,
+                Key: `seller-knowledge/revisions/${revisionId}.md`,
+            }),
+        );
+        if (!response.Body)
+            throw new ServiceUnavailableException(
+                'Knowledge revision source is unavailable',
+            );
+        return Buffer.from(await response.Body.transformToByteArray()).toString(
+            'utf8',
+        );
+    }
+
+    // Xóa riêng object revision khi PostgreSQL không tạo được metadata sau upload; caller không truyền S3 key tùy ý.
+    async deleteKnowledgeRevision(revisionId: string): Promise<void> {
+        if (!this.bucket)
+            throw new ServiceUnavailableException(
+                'AWS_S3_BUCKET is not configured',
+            );
+        await this.s3.send(
+            new DeleteObjectCommand({
+                Bucket: this.bucket,
+                Key: `seller-knowledge/revisions/${revisionId}.md`,
+            }),
+        );
     }
 
     // Doc byte anh goc qua service token; worker khong duoc tu truy cap S3 va khong nhan URL tu seller.
