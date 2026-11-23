@@ -11,6 +11,7 @@ import {
     BadRequestException,
     Injectable,
     Logger,
+    PayloadTooLargeException,
     ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -25,6 +26,7 @@ import type { AiAssetUploadResponse } from '@/modules/media/application/types/ai
 import type { AiAssetUploadDto } from '@/modules/media/presentation/dto/ai-asset-upload.dto';
 
 const S3_DELETE_BATCH_SIZE = 1000;
+const PRODUCT_IMAGE_INDEX_MAX_BYTES = 8 * 1024 * 1024;
 
 @Injectable()
 export class MediaAssetService {
@@ -178,6 +180,17 @@ export class MediaAssetService {
             throw new ServiceUnavailableException(
                 'Source media asset is unavailable',
             );
+        // Kiểm tra S3 metadata trước khi cấp phát Buffer; ảnh index không có Content-Length đáng tin cậy bị từ chối fail-closed.
+        if (
+            purpose === 'product_image' &&
+            (!Number.isSafeInteger(response.ContentLength) ||
+                response.ContentLength! > PRODUCT_IMAGE_INDEX_MAX_BYTES)
+        ) {
+            (response.Body as { destroy?: () => void }).destroy?.();
+            throw new PayloadTooLargeException(
+                'Product image exceeds the 8 MiB indexing limit',
+            );
+        }
         const body = Buffer.from(await response.Body.transformToByteArray());
         return {
             body,
