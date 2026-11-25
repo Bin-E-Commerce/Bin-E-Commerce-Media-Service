@@ -1,3 +1,4 @@
+// Xác thực payload ảnh từ AI Worker trước khi lưu vào vùng asset của chủ shop.
 import {
     IsBase64,
     IsString,

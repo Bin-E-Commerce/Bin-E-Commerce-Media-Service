@@ -1,3 +1,4 @@
+// Giới hạn batch dọn asset sản phẩm và chỉ nhận purpose thuộc catalog.
 import { Type } from 'class-transformer';
 import {
     ArrayMaxSize,

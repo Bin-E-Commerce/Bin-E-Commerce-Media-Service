@@ -6,7 +6,7 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CreatePresignedUploadDto } from '@/modules/media/presentation/dto/create-presigned-upload.dto';
+import { CreatePresignedUploadDto } from '@/modules/media/presentation/dto/uploads/create-presigned-upload.dto';
 import { MediaUploadService } from '@/modules/media/application/services/media-upload.service';
 import type { PresignedUploadResponse } from '@/modules/media/application/types/media-upload.type';
 

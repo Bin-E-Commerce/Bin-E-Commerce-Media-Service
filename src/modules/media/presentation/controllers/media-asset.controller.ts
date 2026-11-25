@@ -17,10 +17,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AvatarService } from '@/modules/media/application/services/avatar.service';
-import { MediaAssetService } from '@/modules/media/application/services/media-asset.service';
-import { CleanupProductAssetsDto } from '@/modules/media/presentation/dto/cleanup-product-assets.dto';
-import { CleanupReviewAssetsDto } from '@/modules/media/presentation/dto/cleanup-review-assets.dto';
-import { AiAssetUploadDto } from '@/modules/media/presentation/dto/ai-asset-upload.dto';
+import { MediaAssetService } from '@/modules/media/application/services/assets/media-asset.service';
+import { CleanupProductAssetsDto } from '@/modules/media/presentation/dto/cleanup/cleanup-product-assets.dto';
+import { CleanupReviewAssetsDto } from '@/modules/media/presentation/dto/cleanup/cleanup-review-assets.dto';
+import { AiAssetUploadDto } from '@/modules/media/presentation/dto/uploads/ai-asset-upload.dto';
 import { StoreKnowledgeRevisionDto } from '@/modules/media/presentation/dto/store-knowledge-revision.dto';
 import type { AiAssetUploadResponse } from '@/modules/media/application/types/ai-asset-upload.type';
 import type {

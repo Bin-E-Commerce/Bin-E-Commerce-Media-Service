@@ -3,7 +3,7 @@ import { MediaAssetController } from '@/modules/media/presentation/controllers/m
 import { MediaUploadController } from '@/modules/media/presentation/controllers/media-upload.controller';
 import { AuthProfileClient } from '@/modules/media/application/clients/auth-profile.client';
 import { AvatarService } from '@/modules/media/application/services/avatar.service';
-import { MediaAssetService } from '@/modules/media/application/services/media-asset.service';
+import { MediaAssetService } from '@/modules/media/application/services/assets/media-asset.service';
 import { MediaUploadService } from '@/modules/media/application/services/media-upload.service';
 
 @Module({

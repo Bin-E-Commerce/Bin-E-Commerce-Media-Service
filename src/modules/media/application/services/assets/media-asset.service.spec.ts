@@ -1,6 +1,6 @@
 import { PayloadTooLargeException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MediaAssetService } from '@/modules/media/application/services/media-asset.service';
+import { MediaAssetService } from '@/modules/media/application/services/assets/media-asset.service';
 
 describe('MediaAssetService image indexing download cap', () => {
     let target: MediaAssetService;

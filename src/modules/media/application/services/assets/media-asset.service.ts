@@ -1,3 +1,4 @@
+// Quản lý vòng đời asset trong S3, giới hạn tải ảnh catalog và tách dữ liệu theo owner.
 import {
     DeleteObjectCommand,
     DeleteObjectsCommand,
@@ -23,7 +24,7 @@ import type {
     ReviewMediaCleanupAsset,
 } from '@/modules/media/application/types/media-upload.type';
 import type { AiAssetUploadResponse } from '@/modules/media/application/types/ai-asset-upload.type';
-import type { AiAssetUploadDto } from '@/modules/media/presentation/dto/ai-asset-upload.dto';
+import type { AiAssetUploadDto } from '@/modules/media/presentation/dto/uploads/ai-asset-upload.dto';
 
 const S3_DELETE_BATCH_SIZE = 1000;
 const PRODUCT_IMAGE_INDEX_MAX_BYTES = 8 * 1024 * 1024;

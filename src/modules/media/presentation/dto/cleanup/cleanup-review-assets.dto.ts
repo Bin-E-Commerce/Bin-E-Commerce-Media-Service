@@ -1,3 +1,4 @@
+// Giới hạn batch dọn asset đánh giá và chỉ nhận purpose thuộc review.
 import { Type } from 'class-transformer';
 import {
     ArrayMaxSize,

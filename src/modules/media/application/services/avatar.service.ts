@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { ConfirmAvatarResponse } from '@/modules/media/application/types/media-upload.type';
 import { AuthProfileClient } from '@/modules/media/application/clients/auth-profile.client';
-import { MediaAssetService } from '@/modules/media/application/services/media-asset.service';
+import { MediaAssetService } from '@/modules/media/application/services/assets/media-asset.service';
 
 const UUID_V4_PATTERN =
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

@@ -1,3 +1,4 @@
+// Xác thực yêu cầu tạo URL tải lên theo MIME, mục đích và kích thước được phép.
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 import {
@@ -12,7 +13,7 @@ import type {
 // Dto để tạo một presigned URL để upload file lên S3. Dto này sẽ được sử dụng trong controller để nhận dữ liệu từ client khi yêu cầu tạo presigned URL. Dto này bao gồm các trường sau:
 // - fileName: tên của file sẽ được upload lên S3. Trường này là bắt buộc và phải là một chuỗi không rỗng.
 // - contentType: loại MIME của file sẽ được upload lên S3. Trường này là bắt buộc và phải là một trong các giá trị được định nghĩa trong MEDIA_UPLOAD_MIME_TYPES.
-// - fileSize: kích thước của file sẽ được upload lên S3, tính bằng byte. Trường này là bắt buộc và phải là một số nguyên dương, tối đa là 20MB.
+// - fileSize: kích thước của file sẽ được upload lên S3, tính bằng byte. Trường này là bắt buộc và phải là một số nguyên dương, tối đa là 30 MiB.
 // - purpose: mục đích của việc upload file lên S3. Trường này là bắt buộc và phải là một trong các giá trị được định nghĩa trong MEDIA_UPLOAD_PURPOSES.
 export class CreatePresignedUploadDto {
     @ApiProperty({ example: 'avatar.jpg' })
