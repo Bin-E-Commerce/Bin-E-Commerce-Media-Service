@@ -12,6 +12,7 @@ import {
     BadRequestException,
     Injectable,
     Logger,
+    NotFoundException,
     PayloadTooLargeException,
     ServiceUnavailableException,
 } from '@nestjs/common';
@@ -170,10 +171,9 @@ export class MediaAssetService {
             (purpose === 'product_image'
                 ? await this.findProcessedAiAssetKey(ownerId, assetId)
                 : undefined);
+        // Thiếu object trong đúng owner prefix là 404 để Recommendation bỏ qua; lỗi List/Get từ S3 vẫn giữ trạng thái retryable.
         if (!objectKey)
-            throw new ServiceUnavailableException(
-                'Source media asset is unavailable',
-            );
+            throw new NotFoundException('Source media asset is unavailable');
         const response = await this.s3.send(
             new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
         );

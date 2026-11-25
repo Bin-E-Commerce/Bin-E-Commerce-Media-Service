@@ -1,4 +1,5 @@
-import { PayloadTooLargeException } from '@nestjs/common';
+// Kiểm tra giới hạn tải ảnh catalog bằng S3 giả để không truy cập object storage.
+import { NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MediaAssetService } from '@/modules/media/application/services/assets/media-asset.service';
 
@@ -51,5 +52,24 @@ describe('MediaAssetService image indexing download cap', () => {
         await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
         expect(destroy).toHaveBeenCalledTimes(1);
         expect(body.transformToByteArray).not.toHaveBeenCalled();
+    });
+
+    // Asset không tồn tại ở cả prefix gốc và prefix AI fallback là 404 xác định, không phải lỗi storage tạm thời.
+    it('should return not found when no owner-scoped source object exists', async () => {
+        // Arrange
+        mockSend
+            .mockResolvedValueOnce({ Contents: [], IsTruncated: false })
+            .mockResolvedValueOnce({ Contents: [], IsTruncated: false });
+
+        // Act
+        const result = target.downloadInternalAsset(
+            'owner-id',
+            'asset-id',
+            'product_image',
+        );
+
+        // Assert
+        await expect(result).rejects.toBeInstanceOf(NotFoundException);
+        expect(mockSend).toHaveBeenCalledTimes(2);
     });
 });
